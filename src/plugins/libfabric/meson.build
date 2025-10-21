@@ -39,6 +39,13 @@ if synapseai_dep.found()
     compile_flags += ['-DHAVE_SYNAPSEAI']
 endif
 
+if sycl_dep.found()
+    libfabric_plugin_deps += [sycl_dep]
+    compile_flags += ['-DHAVE_SYCL']
+else
+    warning('SYCL deps not found. XPU device support will be disabled.')
+endif
+
 # Build as static or shared library based on configuration
 if 'LIBFABRIC' in static_plugins
     libfabric_backend_lib = static_library(
@@ -52,6 +59,7 @@ if 'LIBFABRIC' in static_plugins
         cpp_args: compile_flags,
         name_prefix: 'libplugin_',
     )
+    message('LIBFABRIC in static_plugins')
 else
     libfabric_backend_lib = shared_library(
         'LIBFABRIC',
@@ -75,6 +83,7 @@ else
             check: true,
         )
     endif
+    message('LIBFABRIC not in static_plugins')
 endif
 
 # Declare dependency interface

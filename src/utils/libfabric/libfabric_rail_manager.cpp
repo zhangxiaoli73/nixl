@@ -314,7 +314,7 @@ nixlLibfabricRailManager::selectRailsForMemory(void *mem_addr,
                                                nixl_mem_t mem_type,
                                                int gpu_id) const {
     if (mem_type == VRAM_SEG) {
-#if defined(HAVE_CUDA) || defined(HAVE_SYNAPSEAI)
+#if defined(HAVE_CUDA) || defined(HAVE_SYNAPSEAI) || defined(HAVE_SYCL)
         if (gpu_id < 0) {
             NIXL_ERROR << "Invalid GPU ID " << gpu_id << " for VRAM memory " << mem_addr;
             return {}; // Return empty vector to indicate failure
@@ -906,6 +906,14 @@ int
 nixlLibfabricRailManager::getNumIntelHpus() const {
     if (topology) {
         return topology->getNumIntelHpus();
+    }
+    return 0;
+}
+
+int
+nixlLibfabricRailManager::getNumIntelXpus() const {
+    if (topology) {
+        return topology->getNumIntelXpus();
     }
     return 0;
 }

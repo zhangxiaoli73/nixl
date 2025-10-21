@@ -38,6 +38,10 @@ std::mutex nixlLibfabricRail::synapseai_init_mutex_;
 nixlLibfabricRail::SynapseAIOps nixlLibfabricRail::synapseai_ops_ = {};
 #endif
 
+#ifdef HAVE_SYCL
+// todo:
+#endif
+
 // RequestPool Base Class Implementation
 
 RequestPool::RequestPool(size_t pool_size, size_t rail_id)
@@ -1323,11 +1327,11 @@ nixlLibfabricRail::registerMemory(void *buffer,
     // Validate hint and check if explicit FI_HMEM registration is requested
     bool use_hmem = false;
     if (!hint_lower.empty()) {
-        if (hint_lower == "cuda" || hint_lower == "synapseai") {
+        if (hint_lower == "cuda" || hint_lower == "synapseai" || hint_lower == "sycl") {
             use_hmem = true;
         } else {
             NIXL_WARN << "Unknown HMEM hint '" << hmem_hint << "' on rail " << rail_id
-                      << ", falling back to GDR method. Valid hints: CUDA, SYNAPSEAI";
+                      << ", falling back to GDR method. Valid hints: CUDA, SYNAPSEAI, SYCL";
         }
     }
 
@@ -1381,6 +1385,25 @@ nixlLibfabricRail::registerMemory(void *buffer,
             NIXL_ERROR << "SynapseAI support not enabled (HAVE_SYNAPSEAI not defined)";
             return NIXL_ERR_NOT_SUPPORTED;
 #endif
+        } else if (hint_lower == "sycl") {
+             mr_attr.iface = FI_HMEM_ZE;
+             mr_attr.device.ze = device_id;  // Critical for multi-GPU
+             NIXL_DEBUG << "Using ZE HMEM interface for memory registration on rail " << rail_id
+                       << " device_id=" << device_id;
+
+             NIXL_TRACE << "HMEM Registration: rail=" << rail_id << " provider=" << provider_name
+                       << " buffer=" << buffer << " length=" << length << " iface=" << mr_attr.iface
+                       << " device_id=" << device_id
+                       << " access_flags=0x" << std::hex << provider_access_flags << std::dec;
+
+             ret = fi_mr_regattr(domain, &mr_attr, 0, &mr);
+             if (ret) {
+                NIXL_ERROR << "fi_mr_regattr (HMEM) failed on rail " << rail_id << ": " << fi_strerror(-ret)
+                           << " (buffer=" << buffer << ", length=" << length
+                           << ", hint=" << hmem_hint << ", iface=" << mr_attr.iface
+                           << ", device_id=" << device_id << ")";
+                return NIXL_ERR_BACKEND;
+             }
         }
     } else {
         // === GDR Path (Default) ===

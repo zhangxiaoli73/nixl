@@ -255,6 +255,10 @@ public:
     int
     getNumIntelHpus() const;
 
+    /** Get number of Intel XPUs in the system */
+    int
+    getNumIntelXpus() const;
+
     // Memory Descriptor APIs
     /** Get memory descriptor for specified rail and MR */
     struct fid_mr *

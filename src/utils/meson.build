@@ -23,4 +23,7 @@ subdir('file')
 
 if libfabric_dep.found()
     subdir('libfabric')
+    warning('libfabric_dep deps not found. XPU device support will be disabled.')
+else
+    warning('libfabric_dep  deps not found. XPU device support will be disabled.')
 endif

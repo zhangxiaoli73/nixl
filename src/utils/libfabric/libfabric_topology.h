@@ -45,6 +45,7 @@ private:
     int num_gpus;  // Total GPUs (NVIDIA + Intel HPU)
     int num_nvidia_gpus;  // NVIDIA GPU count
     int num_intel_hpus;   // Intel Habana HPU count
+    int num_intel_xpus;   // Intel XPU count
     int num_numa_nodes;
     int num_devices;
 
@@ -124,6 +125,8 @@ private:
     bool
     isIntelHpu(hwloc_obj_t obj) const;
     bool
+    isIntelXpu(hwloc_obj_t obj) const;
+    bool
     isNvidiaGpu(hwloc_obj_t obj) const;
     bool
     isEfaDevice(hwloc_obj_t obj) const;
@@ -152,6 +155,11 @@ public:
     int
     getNumIntelHpus() const {
         return num_intel_hpus;
+    }
+
+    int
+    getNumIntelXpus() const {
+        return num_intel_xpus;
     }
 
     const std::vector<std::string> &

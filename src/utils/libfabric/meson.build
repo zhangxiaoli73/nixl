@@ -55,6 +55,13 @@ if synapseai_dep.found()
     libfabric_utils_cpp_args += ['-DHAVE_SYNAPSEAI']
 endif
 
+if sycl_dep.found()
+    libfabric_utils_deps += [sycl_dep]
+    libfabric_utils_cpp_args += ['-DHAVE_SYCL']
+else
+    warning('SYCL deps not found. XPU device support will be disabled.')
+endif
+
 # Create static library
 libfabric_utils_lib = static_library(
     'nixl_libfabric_utils',

@@ -36,6 +36,11 @@ if synapseai_dep.found()
     compile_flags += ['-DHAVE_SYNAPSEAI']
 endif
 
+if sycl_dep.found()
+    additional_deps += [sycl_dep]
+    compile_flags += ['-DHAVE_SYCL']
+endif
+
 libfabric_test_deps = [
     nixl_dep,
     nixl_infra,

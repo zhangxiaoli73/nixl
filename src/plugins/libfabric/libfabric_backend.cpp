@@ -736,7 +736,7 @@ nixl_mem_list_t
 nixlLibfabricEngine::getSupportedMems() const {
     nixl_mem_list_t mems;
     mems.push_back(DRAM_SEG);
-#if defined(HAVE_CUDA) || defined(HAVE_SYNAPSEAI)
+#if defined(HAVE_CUDA) || defined(HAVE_SYNAPSEAI) || defined(HAVE_SYCL)
     mems.push_back(VRAM_SEG);
 #endif
     return mems;
@@ -786,6 +786,12 @@ nixlLibfabricEngine::registerMem(const nixlBlobDesc &mem,
         NIXL_DEBUG << "Registering SynapseAI device memory for device " << mem.devId;
         // SynapseAI-specific setup would go here if needed
 #endif
+
+#ifdef HAVE_SYCL
+        // Handle SynapseAI memory registration
+        NIXL_DEBUG << "Registering SYCL device memory for device " << mem.devId;
+        // SynapseAI-specific setup would go here if needed
+#endif
     }
 
     // Initialize vectors to accommodate all possible rails (for indexing consistency)
@@ -799,6 +805,10 @@ nixlLibfabricEngine::registerMem(const nixlBlobDesc &mem,
 #endif
 #ifdef HAVE_SYNAPSEAI
         // SynapseAI context application would go here if needed
+#endif
+
+#ifdef HAVE_SYCL
+        // todo: SYCL context setting
 #endif
     }
 

@@ -201,6 +201,8 @@ getAvailableNetworkDevices() {
         return {"verbs", provider_device_map["verbs"]};
     } else if (provider_device_map.find("sockets") != provider_device_map.end()) {
         return {"sockets", {provider_device_map["sockets"][0]}};
+    } else if (provider_device_map.find("tcp") != provider_device_map.end()) {
+        return {"tcp", {provider_device_map["tcp"][0]}};
     }
 
     NIXL_WARN << "No network devices found with any provider";
