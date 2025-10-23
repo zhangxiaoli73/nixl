@@ -53,11 +53,26 @@ releaseEngine(nixlLibfabricEngine *engine) {
 static std::vector<sycl::queue> device_queues;
 
 void initializeSYCL() {
-    auto gpu_devices = sycl::device::get_devices(sycl::info::device_type::gpu);
-    for (auto& d : gpu_devices) {
-        sycl::queue q(d);
-        device_queues.emplace_back(q);
+    for (auto const &p : sycl::platform::get_platforms()) {
+        std::cout << "Found Platform:" << std::endl;
+        std::cout << "name: " << p.get_info<sycl::info::platform::name>()<< std::endl;
+        if (p.get_backend() != sycl::backend::ext_oneapi_level_zero) {
+            continue;
+        }
+        for (const auto &d : p.get_devices()) {
+          if (!d.is_gpu()) {
+              continue;
+          }
+          sycl::queue q(d);
+          device_queues.emplace_back(q);
+       }
     }
+//    auto gpu_devices = sycl::device::get_devices(sycl::info::device_type::gpu);
+//    for (auto& d : gpu_devices) {
+//        sycl::queue q(d);
+//        device_queues.emplace_back(q);
+//    }
+    std::cout << "!!! Queue vector length: " << device_queues.size() << std::endl;
 }
 
 
