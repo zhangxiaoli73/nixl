@@ -61,6 +61,15 @@ test_backend_integration = executable(
     install: false,
 )
 
+test_backend_integration_xpu = executable(
+    'test_libfabric_backend_integration_xpu',
+    'libfabric_backend_integration_test_xpu.cpp',
+    dependencies: libfabric_test_deps,
+    cpp_args: compile_flags,
+    include_directories: [nixl_inc_dirs, utils_inc_dirs, '../../../../src/plugins/libfabric'],
+    install: false,
+)
+
 test('libfabric_backend_integration',
      test_backend_integration,
      suite: ['unit', 'plugins', 'libfabric', 'integration'],
@@ -72,3 +81,4 @@ test('libfabric_backend_integration',
 # - Different memory types (DRAM, VRAM)
 # - Notification flow
 # - Connection management
+

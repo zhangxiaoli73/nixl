@@ -67,7 +67,7 @@ static const ProviderConfig PROVIDER_CONFIGS[] = {
     },
     {
         "shm",
-        FI_MSG | FI_RMA | FI_READ | FI_WRITE | FI_RECV | FI_SEND | FI_REMOTE_READ | FI_REMOTE_WRITE | FI_MULTI_RECV | FI_LOCAL_COMM | FI_REMOTE_COMM | FI_HMEM,,
+        FI_MSG | FI_RMA | FI_READ | FI_WRITE | FI_RECV | FI_SEND | FI_REMOTE_READ | FI_REMOTE_WRITE | FI_LOCAL_COMM | FI_REMOTE_COMM | FI_HMEM,,
         0,
         0,  // let provider choose
         FI_RM_ENABLED,
