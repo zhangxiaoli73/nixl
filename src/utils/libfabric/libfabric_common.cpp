@@ -200,8 +200,10 @@ getAvailableNetworkDevices() {
                   << "Consider setting FI_PROVIDER=verbs;ofi_rxm for RDM support";
         return {"verbs", provider_device_map["verbs"]};
     } else if (provider_device_map.find("sockets") != provider_device_map.end()) {
+        NIXL_INFO << "Using sockets for RDM endpoint support";
         return {"sockets", {provider_device_map["sockets"][0]}};
     } else if (provider_device_map.find("tcp") != provider_device_map.end()) {
+        NIXL_INFO << "Using TCP for RDM endpoint support";
         return {"tcp", {provider_device_map["tcp"][0]}};
     }
 
