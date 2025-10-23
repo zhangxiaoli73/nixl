@@ -843,7 +843,7 @@ nixlLibfabricEngine::registerMem(const nixlBlobDesc &mem,
         if (nixl_mem == VRAM_SEG && rail_manager.getNumIntelHpus() > 0) {
             hmem_hint = "SYNAPSEAI";
             NIXL_DEBUG << "Auto-detected Intel HPU system, using HMEM interface: SYNAPSEAI";
-        } else if (nixl_mem == VRAM_SEG && rail_manager.getNumIntelXpus > 0) {
+        } else if (nixl_mem == VRAM_SEG && rail_manager.getNumIntelXpus() > 0) {
             hmem_hint = "sycl"; // todo: change to ze?
             NIXL_DEBUG << "Auto-detected Intel XPU system, using HMEM interface: ZE";
         } else {
