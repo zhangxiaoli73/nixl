@@ -64,6 +64,14 @@ static const ProviderConfig PROVIDER_CONFIGS[] = {
         0,  // let provider choose
         FI_RM_UNSPEC,
         FI_THREAD_UNSPEC  // default threading
+    },
+    {
+        "shm",
+        FI_MSG | FI_RMA | FI_READ | FI_WRITE | FI_RECV | FI_SEND | FI_REMOTE_READ | FI_REMOTE_WRITE | FI_MULTI_RECV | FI_LOCAL_COMM | FI_REMOTE_COMM | FI_HMEM,,
+        0,
+        0,  // let provider choose
+        FI_RM_ENABLED,
+        FI_THREAD_SAFE  // default threading
     }
 };
 
@@ -205,6 +213,9 @@ getAvailableNetworkDevices() {
     } else if (provider_device_map.find("tcp") != provider_device_map.end()) {
         NIXL_INFO << "Using TCP for RDM endpoint support";
         return {"tcp", {provider_device_map["tcp"][0]}};
+    } else if (provider_device_map.find("shm") != provider_device_map.end()) {
+        NIXL_INFO << "Using SHM for RDM endpoint support";
+        return {"shm", {provider_device_map["shm"][0]}};
     }
 
     NIXL_WARN << "No network devices found with any provider";
