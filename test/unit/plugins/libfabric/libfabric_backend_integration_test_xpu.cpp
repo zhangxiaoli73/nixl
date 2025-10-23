@@ -20,7 +20,7 @@ FI_PROVIDER=verbs ./test/unit/plugins/libfabric/test_libfabric_backend_integrati
 
 #include "libfabric_backend.h"
 #include "common/nixl_log.h"
-#include <sycl/sycl.hpp>
+#include <level_zero/ze_api.h>
 using namespace std;
 
 nixlLibfabricEngine *
@@ -50,29 +50,77 @@ releaseEngine(nixlLibfabricEngine *engine) {
 }
 
 
-static std::vector<sycl::queue> device_queues;
+static std::vector<ze_device_handle_t> devices_list;
+ze_context_handle_t global_context = nullptr;
 
-void initializeSYCL() {
-    for (auto const &p : sycl::platform::get_platforms()) {
-        std::cout << "Found Platform:" << std::endl;
-        std::cout << "name: " << p.get_info<sycl::info::platform::name>()<< std::endl;
-        if (p.get_backend() != sycl::backend::ext_oneapi_level_zero) {
-            continue;
-        }
-        for (const auto &d : p.get_devices()) {
-          if (!d.is_gpu()) {
-              continue;
-          }
-          sycl::queue q(d);
-          device_queues.emplace_back(q);
-       }
+int initializeXPU() {
+     ze_result_t status;
+
+    // 1️⃣ 初始化 Level Zero
+    status = zeInit(ZE_INIT_FLAG_GPU_ONLY);
+    if (status != ZE_RESULT_SUCCESS) {
+        std::cerr << "zeInit failed\n";
+        return -1;
     }
-//    auto gpu_devices = sycl::device::get_devices(sycl::info::device_type::gpu);
-//    for (auto& d : gpu_devices) {
-//        sycl::queue q(d);
-//        device_queues.emplace_back(q);
-//    }
-    std::cout << "!!! Queue vector length: " << device_queues.size() << std::endl;
+
+    // 2️⃣ 获取 driver
+    uint32_t driverCount = 0;
+    status = zeDriverGet(&driverCount, nullptr);
+    if (status != ZE_RESULT_SUCCESS || driverCount == 0) {
+        std::cerr << "No L0 drivers found\n";
+        return -1;
+    }
+
+    std::vector<ze_driver_handle_t> drivers(driverCount);
+    status = zeDriverGet(&driverCount, drivers.data());
+    if (status != ZE_RESULT_SUCCESS) {
+        std::cerr << "zeDriverGet failed\n";
+        return -1;
+    }
+
+    ze_driver_handle_t driver = drivers[0]; // 使用第一个 driver
+
+    // 3️⃣ 获取 GPU device
+    uint32_t deviceCount = 0;
+    status = zeDeviceGet(driver, &deviceCount, nullptr);
+    if (status != ZE_RESULT_SUCCESS || deviceCount == 0) {
+        std::cerr << "No devices found\n";
+        return -1;
+    } else {
+        std::cout << "Find device number is " << deviceCount << std::endl;
+    }
+
+    std::vector<ze_device_handle_t> devices(deviceCount);
+    status = zeDeviceGet(driver, &deviceCount, devices.data());
+    if (status != ZE_RESULT_SUCCESS) {
+        std::cerr << "zeDeviceGet failed\n";
+        return -1;
+    }
+
+    for (auto device : devices) {
+        ze_device_properties_t props;
+        status = zeDeviceGetProperties(device, &props);
+        if (status == ZE_RESULT_SUCCESS && props.type == ZE_DEVICE_TYPE_GPU) {
+            std::cout << "Using GPU: " << props.name << "\n";
+            devices_list.emplace_back(device);
+        }
+    }
+
+    std::cout << "!!! Devices vector length: " << devices_list.size() << std::endl;
+
+      // 4️⃣ 创建 context
+    ze_context_desc_t context_desc = {};
+    context_desc.stype = ZE_STRUCTURE_TYPE_CONTEXT_DESC;
+    context_desc.pNext = nullptr;
+    context_desc.flags = 0;
+
+    status = zeContextCreate(driver, &context_desc, &global_context);
+    if (status != ZE_RESULT_SUCCESS) {
+        std::cerr << "zeContextCreate failed\n";
+        return -1;
+    }
+    std::cout << "!!! Context create done" << std::endl;
+    return 0;
 }
 
 
@@ -85,13 +133,25 @@ allocateAndRegister(nixlLibfabricEngine *engine,
                     nixlBackendMD *&md) {
     nixlBlobDesc desc;
 
-    // Allocate buffer
-    // Use SYCL to allocate device memory
-    sycl::queue& q = device_queues[dev_id];
-    addr = sycl::malloc_device(len, q);
-    assert(addr);
+    // Allocate level zero buffer
+    ze_device_mem_alloc_desc_t device_desc = {};
+    device_desc.stype = ZE_STRUCTURE_TYPE_DEVICE_MEM_ALLOC_DESC;
+    device_desc.ordinal = 0;
+    device_desc.flags = 0;
 
-    desc.addr = (uintptr_t)addr;
+    void* device_ptr = nullptr;
+    ze_result_t status = zeMemAllocDevice(global_context, &device_desc, len, 1, devices_list[dev_id], &device_ptr);
+    if (status != ZE_RESULT_SUCCESS) {
+        std::cerr << "zeMemAllocDevice failed\n";
+        zeContextDestroy(global_context);
+        return;
+    }
+
+    std::cout << "Allocated " << len << " bytes on GPU at " << device_ptr << "\n";
+
+    assert(device_ptr);
+
+    desc.addr = (uintptr_t)device_ptr;
     desc.len = len;
     desc.devId = dev_id;
 
@@ -106,9 +166,9 @@ deallocateAndDeregister(nixlLibfabricEngine *engine,
                         void *&addr,
                         nixlBackendMD *&md) {
     engine->deregisterMem(md);
-    
-    sycl::queue& q = device_queues[dev_id];
-    sycl::free(addr, q);
+
+    zeMemFree(global_context, addr);
+    zeContextDestroy(global_context);
 }
 
 void
@@ -327,7 +387,8 @@ main(int argc, char **argv) {
     if (argc > 1 && std::string(argv[1]) == "--pthread") {
         p_thread = true;
     }
-    initializeSYCL();
+    auto tmp = initializeXPU();
+    if (tmp < 0) {std::cout << "Skip tests, level zero init failed" << std::endl;}
     test_multi_descriptor_offsets(p_thread);
 
     return 0;

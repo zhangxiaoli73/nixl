@@ -38,7 +38,7 @@ endif
 
 if sycl_dep.found()
     additional_deps += [sycl_dep]
-    compile_flags += ['-DHAVE_SYCL']
+    compile_flags += ['-DHAVE_SYCL -I/usr/include -L/usr/lib -lze_loader']
 endif
 
 libfabric_test_deps = [

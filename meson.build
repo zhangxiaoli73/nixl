@@ -143,7 +143,7 @@ sycl_libdir = join_paths(sycl_root, 'lib')
 
 sycl_dep = declare_dependency(
   include_directories : sycl_inc,
-  link_args : ['-L' + sycl_libdir, '-lsycl']
+  link_args : ['-L' + sycl_libdir, '-lsycl', '-lze_loader']
 )
 
 if sycl_dep.found()
