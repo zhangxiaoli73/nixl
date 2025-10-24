@@ -70,6 +70,15 @@ test_backend_integration_xpu = executable(
     install: false,
 )
 
+test_fi_info = executable(
+    'test_fi_info',
+    'test_fi_info.cpp',
+    dependencies: libfabric_test_deps,
+    cpp_args: compile_flags,
+    include_directories: [nixl_inc_dirs, utils_inc_dirs, '../../../../src/plugins/libfabric'],
+    install: false,
+)
+
 test('libfabric_backend_integration',
      test_backend_integration,
      suite: ['unit', 'plugins', 'libfabric', 'integration'],
