@@ -400,7 +400,6 @@ public:
     static SynapseAIOps synapseai_ops_;
 #endif
 
-private:
     // Core libfabric resources
     struct fi_info *info; // from rail_infos[rail_id]
     struct fid_fabric *fabric; // from rail_fabrics[rail_id]
