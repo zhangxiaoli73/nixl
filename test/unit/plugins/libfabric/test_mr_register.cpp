@@ -208,24 +208,54 @@ int init_provider(char* provider_name) {
         // Get fabric device info with PCIe addresses from libfabric
     struct fi_info *hints, *info;
 
+//    hints = fi_allocinfo();
+//    if (!hints) {
+//        std::cerr << "Failed to alloc fi_info" << std::endl;
+//        return -1;
+//    }
+//
+//    // Configure hints for the discovered provider
+//    // This ensures consistency between device discovery and PCIe mapping
+//    hints->fabric_attr->prov_name = strdup(provider_name);
+//    configureHintsForProvider(hints, provider_name);
+//
+//    // Use FI_VERSION(1, 18) for DMABUF and HMEM support
+//    int ret = fi_getinfo(FI_VERSION(1, 18), NULL, NULL, 0, hints, &info);
+//    if (ret) {
+//        std::cerr << "fi_getinfo failed with provider " << provider_name << std::endl;
+//        fi_freeinfo(hints);
+//        return -1;
+//    }
+
     hints = fi_allocinfo();
     if (!hints) {
         std::cerr << "Failed to alloc fi_info" << std::endl;
         return -1;
     }
 
-    // Configure hints for the discovered provider
-    // This ensures consistency between device discovery and PCIe mapping
-    hints->fabric_attr->prov_name = strdup(provider_name);
+    // Configure hints based on provider
     configureHintsForProvider(hints, provider_name);
 
-    // Use FI_VERSION(1, 18) for DMABUF and HMEM support
-    int ret = fi_getinfo(FI_VERSION(1, 18), NULL, NULL, 0, hints, &info);
-    if (ret) {
-        std::cerr << "fi_getinfo failed with provider " << provider_name << std::endl;
-        fi_freeinfo(hints);
-        return -1;
+    // Override mr_mode for TCP/sockets (they don't support advanced MR features)
+    if (provider_name == "tcp" || provider_name == "sockets") {
+        hints->domain_attr->mr_mode = FI_MR_LOCAL | FI_MR_ALLOCATED;
+        hints->domain_attr->mr_key_size = 0; // Let provider decide
+    } else {
+        // Add HMEM support for other providers (EFA, verbs)
+        if (hints->domain_attr->mr_mode != 0) {
+            hints->domain_attr->mr_mode |= FI_MR_HMEM;
+        } else {
+            hints->domain_attr->mr_mode =
+                FI_MR_LOCAL | FI_MR_HMEM | FI_MR_VIRT_ADDR | FI_MR_ALLOCATED | FI_MR_PROV_KEY;
+        }
+        hints->domain_attr->mr_key_size = 2;
     }
+
+    std::string device_name = "shm";
+
+    hints->domain_attr->name = strdup(device_name.c_str());
+
+    int ret = fi_getinfo(FI_VERSION(1, 18), NULL, NULL, 0, hints, &info);
 
     std::cout << "verbs provider initialized successfully." << std::endl;
 
@@ -260,6 +290,7 @@ int init_provider(char* provider_name) {
 
     // register memory
     struct fid_mr *mr;
+    struct fid_mr *chunk_mr;
 
     // Use fi_mr_regattr for HMEM device memory registration
     struct fi_mr_attr mr_attr = {};
@@ -276,12 +307,21 @@ int init_provider(char* provider_name) {
     mr_attr.iface = FI_HMEM_ZE;
     mr_attr.device.ze = 0;  // device_id
 
+    size_t chunk_size =8388608;
+    void* chunk_buffer = malloc(chunk_size);
+    ret = fi_mr_reg(domain, chunk_buffer, chunk_size, FI_SEND | FI_RECV, 0, 0, 0, &chunk_mr, NULL);
+    if (ret) {
+        std::cout << "fi_mr_reg Failed \n" << std::endl;
+    } else {
+        std::cout << "fi_mr_reg Passed \n" << std::endl;
+    }
+
     ret = fi_mr_regattr(domain, &mr_attr, 0, &mr);
 
      if (ret) {
-         std::cout << "Failed \n" << std::endl;
+         std::cout << "fi_mr_regattr Failed \n" << std::endl;
      } else {
-         std::cout << "Passed \n" << std::endl;
+         std::cout << "fi_mr_regattr Passed \n" << std::endl;
      }
 
     fi_freeinfo(info);
