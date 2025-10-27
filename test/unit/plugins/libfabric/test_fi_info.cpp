@@ -3,6 +3,100 @@
 #include <rdma/fi_endpoint.h>
 #include <iostream>
 #include "libfabric_common.h"
+#include "libfabric_rail.h"
+
+#include <level_zero/ze_api.h>
+using namespace std;
+
+
+static std::vector<ze_device_handle_t> devices_list;
+ze_context_handle_t global_context = nullptr;
+
+int initializeXPU() {
+     ze_result_t status;
+
+    // 1️⃣ 初始化 Level Zero
+    status = zeInit(ZE_INIT_FLAG_GPU_ONLY);
+    if (status != ZE_RESULT_SUCCESS) {
+        std::cerr << "zeInit failed\n";
+        return -1;
+    }
+
+    // 2️⃣ 获取 driver
+    uint32_t driverCount = 0;
+    status = zeDriverGet(&driverCount, nullptr);
+    if (status != ZE_RESULT_SUCCESS || driverCount == 0) {
+        std::cerr << "No L0 drivers found\n";
+        return -1;
+    }
+
+    std::vector<ze_driver_handle_t> drivers(driverCount);
+    status = zeDriverGet(&driverCount, drivers.data());
+    if (status != ZE_RESULT_SUCCESS) {
+        std::cerr << "zeDriverGet failed\n";
+        return -1;
+    } else {
+        std::cout << "Find driver number is " << driverCount << std::endl;
+    }
+
+    ze_driver_handle_t driver = drivers[0]; // 使用第一个 driver
+
+    // 3️⃣ 获取 GPU device
+    uint32_t deviceCount = 0;
+    status = zeDeviceGet(driver, &deviceCount, nullptr);
+    if (status != ZE_RESULT_SUCCESS || deviceCount == 0) {
+        std::cerr << "No devices found\n";
+        return -1;
+    }
+
+    std::vector<ze_device_handle_t> devices(deviceCount);
+    status = zeDeviceGet(driver, &deviceCount, devices.data());
+    if (status != ZE_RESULT_SUCCESS) {
+        std::cerr << "zeDeviceGet failed\n";
+        return -1;
+    }
+
+    for (auto device : devices) {
+        ze_device_properties_t props;
+        status = zeDeviceGetProperties(device, &props);
+        if (status == ZE_RESULT_SUCCESS && props.type == ZE_DEVICE_TYPE_GPU) {
+            std::cout << "Using GPU: " << props.name << "\n";
+            devices_list.emplace_back(device);
+        }
+    }
+
+    std::cout << "!!! Devices vector length: " << devices_list.size() << std::endl;
+
+      // 4️⃣ 创建 context
+    ze_context_desc_t context_desc = {};
+    context_desc.stype = ZE_STRUCTURE_TYPE_CONTEXT_DESC;
+    context_desc.pNext = nullptr;
+    context_desc.flags = 0;
+
+    status = zeContextCreate(driver, &context_desc, &global_context);
+    if (status != ZE_RESULT_SUCCESS) {
+        std::cerr << "zeContextCreate failed\n";
+        return -1;
+    }
+    std::cout << "!!! Context create done" << std::endl;
+    return 0;
+}
+
+void* allocate_device_memory(size_t len, int dev_id) {
+    ze_device_mem_alloc_desc_t device_desc = {};
+    device_desc.stype = ZE_STRUCTURE_TYPE_DEVICE_MEM_ALLOC_DESC;
+    device_desc.ordinal = 0;
+    device_desc.flags = 0;
+
+    void* device_ptr = nullptr;
+    ze_result_t status = zeMemAllocDevice(global_context, &device_desc, len, 1, devices_list[dev_id], &device_ptr);
+    if (status != ZE_RESULT_SUCCESS) {
+        std::cerr << "zeMemAllocDevice failed\n";
+        zeContextDestroy(global_context);
+        return nullptr;
+    }
+    return device_ptr;
+}
 
 // Provider configuration structure
 struct ProviderConfigTest {
@@ -128,7 +222,7 @@ int init_provider(char* provider_name) {
     // Use FI_VERSION(1, 18) for DMABUF and HMEM support
     int ret = fi_getinfo(FI_VERSION(1, 18), NULL, NULL, 0, hints, &info);
     if (ret) {
-                std::cerr << "fi_getinfo failed with provider " << provider_name << std::endl;
+        std::cerr << "fi_getinfo failed with provider " << provider_name << std::endl;
         fi_freeinfo(hints);
         return -1;
     }
@@ -137,10 +231,22 @@ int init_provider(char* provider_name) {
     std::cout << "verbs provider initialized successfully." << std::endl;
 
     // Test rail
-//    fabric_devices[i], provider_name, static_cast<uint16_t>(i)
-//
-//    nixlLibfabricRail(, "shm", 0);
+    ret = initializeXPU();
+    if (ret < 0) return -1;
 
+    size_t length = 2048;
+    auto xpu_device_ptr = allocate_device_memory(length, 0);
+
+    struct fid_mr *mr;
+    uint64_t key;
+
+    auto fabric_rail = nixlLibfabricRail("shm", "shm", static_cast<uint16_t>(0));
+    nixl_status_t status = fabric_rail.registerMemory(xpu_device_ptr, length, "ze", 0, &mr, &key);
+     if (status != NIXL_SUCCESS) {
+         std::cout << "Failed \n" << std::endl;
+     } else {
+         std::cout << "Passed \n" << std::endl;
+     }
 
     fi_freeinfo(info);
     fi_freeinfo(hints);
@@ -151,9 +257,9 @@ int main(int argc, char **argv) {
     char *provider_name = NULL;
         provider_name = argv[1];
         std::cout << "Input provider as " << provider_name << std::endl;
-    auto network_device = LibfabricUtils::getAvailableNetworkDevices();
-    return 0;
-    //return init_provider(provider_name);
+//    auto network_device = LibfabricUtils::getAvailableNetworkDevices();
+//    return 0;
+    return init_provider(provider_name);
 }
 
 
