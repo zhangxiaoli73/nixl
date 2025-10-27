@@ -136,6 +136,12 @@ int init_provider(char* provider_name) {
 
     std::cout << "verbs provider initialized successfully." << std::endl;
 
+    // Test rail
+//    fabric_devices[i], provider_name, static_cast<uint16_t>(i)
+//
+//    nixlLibfabricRail(, "shm", 0);
+
+
     fi_freeinfo(info);
     fi_freeinfo(hints);
     return 0;

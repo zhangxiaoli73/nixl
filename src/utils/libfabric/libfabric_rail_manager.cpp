@@ -93,7 +93,7 @@ nixlLibfabricRailManager::createDataRails(const std::vector<std::string> &fabric
             // Initialize fabric device mapping
             device_to_rail_map[fabric_devices[i]] = i;
 
-            NIXL_DEBUG << "Created data rail " << i << " (device: " << fabric_devices[i]
+            NIXL_INFO << "Created data rail " << i << " (device: " << fabric_devices[i]
                        << ", provider: " << provider_name << ")";
         }
     }
@@ -331,7 +331,7 @@ nixlLibfabricRailManager::selectRailsForMemory(void *mem_addr,
                 // Bounds check: ensure rail index is valid
                 if (it->second < data_rails_.size()) {
                     gpu_rails.push_back(it->second);
-                    NIXL_DEBUG << "VRAM memory " << mem_addr << " on GPU " << gpu_id
+                    NIXL_INFO << "VRAM memory " << mem_addr << " on GPU " << gpu_id
                                << " mapped to rail " << it->second << " (fabric device: " << device_name
                                << ")";
                 } else {
@@ -432,6 +432,8 @@ nixlLibfabricRailManager::registerMemory(void *buffer,
                 }
             }
             return status;
+        } else {
+            NIXL_INFO << "Finished register memory on rail " << rail_idx << " with length " << length << " on gpu id " << gpu_id;
         }
 
         mr_list_out[rail_idx] = mr;
@@ -440,7 +442,7 @@ nixlLibfabricRailManager::registerMemory(void *buffer,
         // Mark rail as active for progress tracking optimization
         markRailActive(rail_idx);
 
-        NIXL_DEBUG << "Registered memory on rail " << rail_idx
+        NIXL_INFO << "Registered memory on rail " << rail_idx
                    << " (mr: " << static_cast<const void *>(mr) << ", key: " << key << ")";
     }
 

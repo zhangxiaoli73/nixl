@@ -467,6 +467,8 @@ nixlLibfabricRail::nixlLibfabricRail(const std::string &device,
         if (ret) {
             NIXL_ERROR << "fi_domain failed for rail " << rail_id << ": " << fi_strerror(-ret);
             throw std::runtime_error("fi_domain failed for rail " + std::to_string(rail_id));
+        } else {
+            NIXL_INFO << "fi_domain passed for rail " << rail_id;
         }
 
         // Create CQ for this rail
@@ -516,6 +518,8 @@ nixlLibfabricRail::nixlLibfabricRail(const std::string &device,
         if (ret) {
             NIXL_ERROR << "fi_endpoint failed for rail " << rail_id << ": " << fi_strerror(-ret);
             throw std::runtime_error("fi_endpoint failed for rail " + std::to_string(rail_id));
+        } else {
+            NIXL_INFO << "fi_endpoint pass for rail " << rail_id;
         }
 
         // Bind endpoint with CQ and AV for this rail
@@ -1245,7 +1249,7 @@ nixlLibfabricRail::postRead(void *local_buffer,
                 NIXL_INFO << "fi_read still retrying EAGAIN on rail " << rail_id << " after "
                           << attempt << " attempts";
             } else {
-                NIXL_TRACE << "fi_read returned EAGAIN on rail " << rail_id
+                NIXL_INFO << "fi_read returned EAGAIN on rail " << rail_id
                            << ", retrying (attempt " << attempt << ")";
             }
 
@@ -1256,7 +1260,7 @@ nixlLibfabricRail::postRead(void *local_buffer,
             // Progress completion queue to drain pending completions before retry
             nixl_status_t progress_status = progressCompletionQueue(false);
             if (progress_status == NIXL_SUCCESS) {
-                NIXL_TRACE << "Progressed completions on rail " << rail_id << " before retry";
+                NIXL_INFO << "Progressed completions on rail " << rail_id << " before retry";
             }
 
             usleep(delay_us);
@@ -1398,6 +1402,7 @@ nixlLibfabricRail::registerMemory(void *buffer,
 
              ret = fi_mr_regattr(domain, &mr_attr, 0, &mr);
              if (ret) {
+                NIXL_ERROR << "In nixlLibfabricRail with initialization: device_name = " << device_name << " provider_name = " << provider_name << " rail_id = " << rail_id;
                 NIXL_ERROR << "fi_mr_regattr (HMEM) failed on rail " << rail_id << ": " << fi_strerror(-ret)
                            << " (buffer=" << buffer << ", length=" << length
                            << ", hint=" << hmem_hint << ", iface=" << mr_attr.iface

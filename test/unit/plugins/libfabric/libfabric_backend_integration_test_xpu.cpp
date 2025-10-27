@@ -76,6 +76,8 @@ int initializeXPU() {
     if (status != ZE_RESULT_SUCCESS) {
         std::cerr << "zeDriverGet failed\n";
         return -1;
+    } else {
+        std::cout << "Find driver number is " << driverCount << std::endl;
     }
 
     ze_driver_handle_t driver = drivers[0]; // 使用第一个 driver
@@ -86,8 +88,6 @@ int initializeXPU() {
     if (status != ZE_RESULT_SUCCESS || deviceCount == 0) {
         std::cerr << "No devices found\n";
         return -1;
-    } else {
-        std::cout << "Find device number is " << deviceCount << std::endl;
     }
 
     std::vector<ze_device_handle_t> devices(deviceCount);
