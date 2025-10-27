@@ -844,7 +844,7 @@ nixlLibfabricEngine::registerMem(const nixlBlobDesc &mem,
             hmem_hint = "SYNAPSEAI";
             NIXL_DEBUG << "Auto-detected Intel HPU system, using HMEM interface: SYNAPSEAI";
         } else if (nixl_mem == VRAM_SEG && rail_manager.getNumIntelXpus() > 0) {
-            hmem_hint = "sycl"; // todo: change to ze?
+            hmem_hint = "ze";
             NIXL_DEBUG << "Auto-detected Intel XPU system, using HMEM interface: ZE";
         } else {
             // Leave empty for GDR fallback (CUDA) or DRAM

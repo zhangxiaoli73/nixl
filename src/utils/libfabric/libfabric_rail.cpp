@@ -1327,7 +1327,7 @@ nixlLibfabricRail::registerMemory(void *buffer,
     // Validate hint and check if explicit FI_HMEM registration is requested
     bool use_hmem = false;
     if (!hint_lower.empty()) {
-        if (hint_lower == "cuda" || hint_lower == "synapseai" || hint_lower == "sycl") {
+        if (hint_lower == "cuda" || hint_lower == "synapseai" || hint_lower == "ze") {
             use_hmem = true;
         } else {
             NIXL_WARN << "Unknown HMEM hint '" << hmem_hint << "' on rail " << rail_id
@@ -1385,7 +1385,7 @@ nixlLibfabricRail::registerMemory(void *buffer,
             NIXL_ERROR << "SynapseAI support not enabled (HAVE_SYNAPSEAI not defined)";
             return NIXL_ERR_NOT_SUPPORTED;
 #endif
-        } else if (hint_lower == "sycl") {
+        } else if (hint_lower == "ze") {
              mr_attr.iface = FI_HMEM_ZE;
              mr_attr.device.ze = device_id;  // Critical for multi-GPU
              NIXL_DEBUG << "Using ZE HMEM interface for memory registration on rail " << rail_id
