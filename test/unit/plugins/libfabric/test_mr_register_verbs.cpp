@@ -8,7 +8,6 @@
 #include <level_zero/ze_api.h>
 using namespace std;
 
-
 static std::vector<ze_device_handle_t> devices_list;
 ze_context_handle_t global_context = nullptr;
 
@@ -206,7 +205,7 @@ void configureHintsForProvider(struct fi_info* hints, const std::string& provide
 int init_provider(char* provider_name) {
 
         // Get fabric device info with PCIe addresses from libfabric
-    struct fi_info *hints, *info;
+   struct fi_info *hints, *info;
 
     hints = fi_allocinfo();
     if (!hints) {
@@ -214,29 +213,18 @@ int init_provider(char* provider_name) {
         return -1;
     }
 
-    // Configure hints based on provider
+    // Configure hints for the discovered provider
+    // This ensures consistency between device discovery and PCIe mapping
+    hints->fabric_attr->prov_name = strdup(provider_name);
     configureHintsForProvider(hints, provider_name);
 
-    // Override mr_mode for TCP/sockets (they don't support advanced MR features)
-    if (provider_name == "tcp" || provider_name == "sockets") {
-        hints->domain_attr->mr_mode = FI_MR_LOCAL | FI_MR_ALLOCATED;
-        hints->domain_attr->mr_key_size = 0; // Let provider decide
-    } else {
-        // Add HMEM support for other providers (EFA, verbs)
-        if (hints->domain_attr->mr_mode != 0) {
-            hints->domain_attr->mr_mode |= FI_MR_HMEM;
-        } else {
-            hints->domain_attr->mr_mode =
-                FI_MR_LOCAL | FI_MR_HMEM | FI_MR_VIRT_ADDR | FI_MR_ALLOCATED | FI_MR_PROV_KEY;
-        }
-        hints->domain_attr->mr_key_size = 2;
-    }
-
-    std::string device_name = "shm";
-
-    hints->domain_attr->name = strdup(device_name.c_str());
-
+    // Use FI_VERSION(1, 18) for DMABUF and HMEM support
     int ret = fi_getinfo(FI_VERSION(1, 18), NULL, NULL, 0, hints, &info);
+    if (ret) {
+        std::cerr << "fi_getinfo failed with provider " << provider_name << std::endl;
+        fi_freeinfo(hints);
+        return -1;
+    }
 
     std::cout << "verbs provider initialized successfully." << std::endl;
 
@@ -246,8 +234,6 @@ int init_provider(char* provider_name) {
 
     size_t length = 2048;
     auto xpu_device_ptr = allocate_device_memory(length, 0);
-
-    auto fabric_rail = nixlLibfabricRail("shm", "shm", static_cast<uint16_t>(0));
 
     struct fid_domain *domain = nullptr;
     struct fid_fabric *fabric = nullptr;
@@ -280,7 +266,7 @@ int init_provider(char* provider_name) {
     mr_attr.mr_iov = &iov;
     mr_attr.iov_count = 1;
     // get access from  rail
-    mr_attr.access = fabric_rail.getMemoryRegistrationAccessFlags();
+//    mr_attr.access = fabric_rail.getMemoryRegistrationAccessFlags();
 
     mr_attr.iface = FI_HMEM_ZE;
     mr_attr.device.ze = 0;  // device_id

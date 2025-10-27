@@ -147,6 +147,7 @@ allocateAndRegister(nixlLibfabricEngine *engine,
         return;
     }
 
+    addr = device_ptr;
     std::cout << "Allocated " << len << " bytes on GPU at " << device_ptr << "\n";
 
     assert(device_ptr);
@@ -284,6 +285,10 @@ test_multi_descriptor_offsets(bool p_thread) {
     allocateAndRegister(engine1, 0, VRAM_SEG, send_buf, TOTAL_SIZE, send_md);
     allocateAndRegister(engine2, 1, VRAM_SEG, recv_buf, TOTAL_SIZE, recv_md);
 
+    std::cout << "Created " << send_buf << " send buf address\n";
+    std::cout << "Created " << recv_buf << " recv buf address\n";
+
+
     // Fill send buffer with unique pattern for each descriptor's region
 //    for (int i = 0; i < DESC_COUNT; i++) {
 //        size_t offset = i * DESC_SIZE;
@@ -329,6 +334,8 @@ test_multi_descriptor_offsets(bool p_thread) {
 
     std::cout << "Created " << src_descs.descCount() << " source descriptors\n";
     std::cout << "Created " << dst_descs.descCount() << " destination descriptors\n\n";
+    std::cout << "Created " << send_buf << " send buf address\n";
+    std::cout << "Created " << recv_buf << " recv buf address\n";
 
     // Perform transfer
     performTransfer(engine1, engine2, src_descs, dst_descs, send_buf, recv_buf, TOTAL_SIZE, NIXL_WRITE);
