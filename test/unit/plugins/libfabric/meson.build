@@ -79,7 +79,7 @@ test_fi_info = executable(
     install: false,
 )
 
-test_fi_info = executable(
+test_mr_register = executable(
     'test_mr_register',
     'test_mr_register.cpp',
     dependencies: libfabric_test_deps,
@@ -88,7 +88,7 @@ test_fi_info = executable(
     install: false,
 )
 
-test_fi_info = executable(
+test_mr_register_verbs = executable(
     'test_mr_register_verbs',
     'test_mr_register_verbs.cpp',
     dependencies: libfabric_test_deps,

@@ -30,6 +30,13 @@ ucx_backend_test = executable('ucx_backend_test',
         cpp_args : cpp_args,
         install: true)
 
+ucx_backend_test_xpu = executable('ucx_backend_test_xpu',
+        'ucx_backend_test_xpu.cpp',
+        dependencies: [nixl_dep, nixl_infra, nixl_common_deps, ucx_backend_dep, ucx_dep, thread_dep] + cuda_dependencies,
+        include_directories: [nixl_inc_dirs, utils_inc_dirs, '../../../../src/plugins/ucx'],
+        cpp_args : cpp_args,
+        install: true)
+
 ucx_backend_multi = executable('ucx_backend_multi',
            'ucx_backend_multi.cpp',
            dependencies: [nixl_dep, nixl_infra, nixl_common_deps, ucx_backend_dep, ucx_dep, thread_dep] + cuda_dependencies,
