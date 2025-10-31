@@ -23,8 +23,7 @@ FI_PROVIDER=verbs ./test/unit/plugins/ucx/ucx_backend_test_xpu --pthread
 #include <level_zero/ze_api.h>
 using namespace std;
 
-std::unique_ptr<nixlUcxEngine>
-createEngine(std::string name, bool p_thread) {
+std::unique_ptr<nixlUcxEngine> createEngine(std::string name, bool p_thread) {
     nixlBackendInitParams init;
     nixl_b_params_t custom_params;
 
@@ -34,7 +33,7 @@ createEngine(std::string name, bool p_thread) {
     init.customParams = &custom_params;
     init.type = "UCX";
 
-    auto engine = new nixlUcxEngine::create(init);
+    auto engine = nixlUcxEngine::create(init);
     assert(!engine->getInitErr());
     if (engine->getInitErr()) {
         std::cout << "Failed to initialize ucx engine" << std::endl;
@@ -44,7 +43,8 @@ createEngine(std::string name, bool p_thread) {
     return engine;
 }
 
-void releaseEngine(std::unique_ptr<nixlUcxEngine> engine) {
+void
+releaseEngine(nixlUcxEngine *engine) {
     delete engine;
 }
 
@@ -124,7 +124,7 @@ int initializeXPU() {
 
 
 void
-allocateAndRegister(std::unique_ptr<nixlUcxEngine>  engine,
+allocateAndRegister(nixlUcxEngine *engine,
                     int dev_id,
                     nixl_mem_t mem_type,
                     void *&addr,
@@ -160,7 +160,7 @@ allocateAndRegister(std::unique_ptr<nixlUcxEngine>  engine,
 }
 
 void
-deallocateAndDeregister(std::unique_ptr<nixlUcxEngine> engine,
+deallocateAndDeregister(nixlUcxEngine *engine,
                         int dev_id,
                         nixl_mem_t mem_type,
                         void *&addr,
@@ -172,7 +172,7 @@ deallocateAndDeregister(std::unique_ptr<nixlUcxEngine> engine,
 }
 
 void
-loadRemote(std::unique_ptr<nixlUcxEngine> engine,
+loadRemote(nixlUcxEngine *engine,
            int dev_id,
            std::string agent,
            nixl_mem_t mem_type,
@@ -206,8 +206,8 @@ populateDescs(nixl_meta_dlist_t &descs, int dev_id, void *addr, int desc_cnt, si
 }
 
 void
-performTransfer(std::unique_ptr<nixlUcxEngine>  engine1,
-                std::unique_ptr<nixlUcxEngine>  engine2,
+performTransfer(nixlUcxEngine *engine1,
+                nixlUcxEngine *engine2,
                 nixl_meta_dlist_t &req_src_descs,
                 nixl_meta_dlist_t &req_dst_descs,
                 void *addr1,
@@ -262,8 +262,8 @@ test_multi_descriptor_offsets(bool p_thread) {
     std::string agent2("Agent2");
 
     // Create engines
-    std::unique_ptr<nixlUcxEngine>  engine1 = createEngine(agent1, p_thread);
-    std::unique_ptr<nixlUcxEngine>  engine2 = createEngine(agent2, p_thread);
+    std::unique_ptr<nixlUcxEngine> engine1 = createEngine(agent1, p_thread);
+    std::unique_ptr<nixlUcxEngine> engine2 = createEngine(agent2, p_thread);
 
     // Test parameters
     const size_t TOTAL_SIZE = 1024 * 1024; // 1MB total
@@ -281,8 +281,8 @@ test_multi_descriptor_offsets(bool p_thread) {
     nixlBackendMD *send_md = nullptr;
     nixlBackendMD *recv_md = nullptr;
 
-    allocateAndRegister(engine1, 0, VRAM_SEG, send_buf, TOTAL_SIZE, send_md);
-    allocateAndRegister(engine2, 1, VRAM_SEG, recv_buf, TOTAL_SIZE, recv_md);
+    allocateAndRegister(engine1.get(), 0, VRAM_SEG, send_buf, TOTAL_SIZE, send_md);
+    allocateAndRegister(engine2.get(), 1, VRAM_SEG, recv_buf, TOTAL_SIZE, recv_md);
 
     std::cout << "Created " << send_buf << " send buf address\n";
     std::cout << "Created " << recv_buf << " recv buf address\n";
@@ -322,7 +322,7 @@ test_multi_descriptor_offsets(bool p_thread) {
     // Load remote metadata
     nixlBackendMD *recv_rmd = nullptr;
 
-    loadRemote(engine1, 1, agent2, VRAM_SEG, recv_buf, TOTAL_SIZE, recv_md, recv_rmd);
+    loadRemote(engine1.get(), 1, agent2, VRAM_SEG, recv_buf, TOTAL_SIZE, recv_md, recv_rmd);
 
     // Create descriptor lists with different offsets
     nixl_meta_dlist_t src_descs(VRAM_SEG);
@@ -337,7 +337,7 @@ test_multi_descriptor_offsets(bool p_thread) {
     std::cout << "Created " << recv_buf << " recv buf address\n";
 
     // Perform transfer
-    performTransfer(engine1, engine2, src_descs, dst_descs, send_buf, recv_buf, TOTAL_SIZE, NIXL_WRITE);
+    performTransfer(engine1.get(), engine2.get(), src_descs, dst_descs, send_buf, recv_buf, TOTAL_SIZE, NIXL_WRITE);
 
     // Verify data correctness for each descriptor's region
     std::cout << "\nData verification:\n";
@@ -379,11 +379,11 @@ test_multi_descriptor_offsets(bool p_thread) {
     engine1->disconnect(agent2);
     engine2->disconnect(agent1);
 
-    deallocateAndDeregister(engine1, 0, VRAM_SEG, send_buf, send_md);
-    deallocateAndDeregister(engine2, 1, VRAM_SEG, recv_buf, recv_md);
+    deallocateAndDeregister(engine1.get(), 0, VRAM_SEG, send_buf, send_md);
+    deallocateAndDeregister(engine2.get(), 1, VRAM_SEG, recv_buf, recv_md);
 
-    releaseEngine(engine1);
-    releaseEngine(engine2);
+    releaseEngine(engine1.get());
+    releaseEngine(engine2.get());
 
     std::cout << "\nTest completed successfully!\n";
 }
