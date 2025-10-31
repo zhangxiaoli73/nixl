@@ -1260,16 +1260,17 @@ nixl_status_t nixlUcxEngine::registerMem (const nixlBlobDesc &mem,
 {
     auto priv = std::make_unique<nixlUcxPrivateMetadata>();
 
-    if (nixl_mem == VRAM_SEG) {
-        bool need_restart;
-        if (vramUpdateCtx((void*)mem.addr, mem.devId, need_restart)) {
-            return NIXL_ERR_NOT_SUPPORTED;
-            //TODO Add to logging
-        }
-        if (need_restart) {
-            vramApplyCtx();
-        }
-    }
+    // todo: add such check for XPU also
+//    if (nixl_mem == VRAM_SEG) {
+//        bool need_restart;
+//        if (vramUpdateCtx((void*)mem.addr, mem.devId, need_restart)) {
+//            return NIXL_ERR_NOT_SUPPORTED;
+//            //TODO Add to logging
+//        }
+//        if (need_restart) {
+//            vramApplyCtx();
+//        }
+//    }
 
     // TODO: Add nixl_mem check?
     const int ret = uc->memReg((void*) mem.addr, mem.len, priv->mem, nixl_mem);

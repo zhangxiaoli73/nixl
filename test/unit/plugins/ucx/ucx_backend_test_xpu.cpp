@@ -23,7 +23,7 @@ FI_PROVIDER=verbs ./test/unit/plugins/ucx/ucx_backend_test_xpu --pthread
 #include <level_zero/ze_api.h>
 using namespace std;
 
-nixlUcxEngine *
+std::unique_ptr<nixlUcxEngine>
 createEngine(std::string name, bool p_thread) {
     nixlBackendInitParams init;
     nixl_b_params_t custom_params;
@@ -41,11 +41,10 @@ createEngine(std::string name, bool p_thread) {
         exit(1);
     }
 
-    return engine.get();
+    return engine;
 }
 
-void
-releaseEngine(nixlUcxEngine *engine) {
+void releaseEngine(std::unique_ptr<nixlUcxEngine> engine) {
     delete engine;
 }
 
@@ -125,7 +124,7 @@ int initializeXPU() {
 
 
 void
-allocateAndRegister(nixlUcxEngine *engine,
+allocateAndRegister(std::unique_ptr<nixlUcxEngine>  engine,
                     int dev_id,
                     nixl_mem_t mem_type,
                     void *&addr,
@@ -161,7 +160,7 @@ allocateAndRegister(nixlUcxEngine *engine,
 }
 
 void
-deallocateAndDeregister(nixlUcxEngine *engine,
+deallocateAndDeregister(std::unique_ptr<nixlUcxEngine> engine,
                         int dev_id,
                         nixl_mem_t mem_type,
                         void *&addr,
@@ -173,7 +172,7 @@ deallocateAndDeregister(nixlUcxEngine *engine,
 }
 
 void
-loadRemote(nixlUcxEngine *engine,
+loadRemote(std::unique_ptr<nixlUcxEngine> engine,
            int dev_id,
            std::string agent,
            nixl_mem_t mem_type,
@@ -207,8 +206,8 @@ populateDescs(nixl_meta_dlist_t &descs, int dev_id, void *addr, int desc_cnt, si
 }
 
 void
-performTransfer(nixlUcxEngine *engine1,
-                nixlUcxEngine *engine2,
+performTransfer(std::unique_ptr<nixlUcxEngine>  engine1,
+                std::unique_ptr<nixlUcxEngine>  engine2,
                 nixl_meta_dlist_t &req_src_descs,
                 nixl_meta_dlist_t &req_dst_descs,
                 void *addr1,
@@ -263,8 +262,8 @@ test_multi_descriptor_offsets(bool p_thread) {
     std::string agent2("Agent2");
 
     // Create engines
-    nixlUcxEngine *engine1 = createEngine(agent1, p_thread);
-    nixlUcxEngine *engine2 = createEngine(agent2, p_thread);
+    std::unique_ptr<nixlUcxEngine>  engine1 = createEngine(agent1, p_thread);
+    std::unique_ptr<nixlUcxEngine>  engine2 = createEngine(agent2, p_thread);
 
     // Test parameters
     const size_t TOTAL_SIZE = 1024 * 1024; // 1MB total
