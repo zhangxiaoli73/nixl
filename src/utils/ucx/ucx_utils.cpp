@@ -397,9 +397,9 @@ nixlUcxContext::nixlUcxContext(std::vector<std::string> devs,
 
     ucp_params.field_mask = UCP_PARAM_FIELD_FEATURES | UCP_PARAM_FIELD_MT_WORKERS_SHARED;
     ucp_params.features = UCP_FEATURE_RMA | UCP_FEATURE_AMO32 | UCP_FEATURE_AMO64 | UCP_FEATURE_AM;
-//#ifdef HAVE_UCX_GPU_DEVICE_API
-    ucp_params.features |= UCP_FEATURE_DEVICE;
-//#endif
+#ifdef HAVE_UCX_GPU_DEVICE_API
+    ucp_params.features |= UCP_FEATURE_DEVICE; // todo: need this flag for XPU
+#endif
 
     if (prog_thread)
         ucp_params.features |= UCP_FEATURE_WAKEUP;
@@ -551,6 +551,7 @@ int nixlUcxContext::memReg(void *addr, size_t size, nixlUcxMem &mem, nixl_mem_t 
                      UCP_MEM_MAP_PARAM_FIELD_ADDRESS,
         .address = mem.base,
         .length  = mem.size,
+        .memory_type = UCS_MEMORY_TYPE_ZE_DEVICE,
     };
 
     ucs_status_t status = ucp_mem_map(ctx, &mem_params, &mem.memh);
