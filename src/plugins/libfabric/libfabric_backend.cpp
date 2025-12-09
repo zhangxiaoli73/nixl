@@ -1364,8 +1364,11 @@ nixlLibfabricEngine::cmThread() {
     // Main progress loop - continuously process completions on all rails
     while (!cm_thread_stop_.load()) {
         loop_count++;
-        if (loop_count % 1000000 == 0) {
-            NIXL_INFO << "CM thread for " << localAgent << " loop iteration " << loop_count;
+        // Log every 10 iterations (with 1-second blocking, this is every ~10 seconds)
+        if (loop_count % 10 == 0) {
+            NIXL_INFO << "CM thread for " << localAgent << " loop iteration " << loop_count
+                      << " (blocking_cq_sread_supported: "
+                      << rail_manager.getControlRail(0).blocking_cq_sread_supported << ")";
         }
 
         nixl_status_t status = rail_manager.progressAllControlRails();

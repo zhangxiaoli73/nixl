@@ -35,7 +35,8 @@
 
 // Libfabric configuration constants
 #define NIXL_LIBFABRIC_DEFAULT_CONTROL_RAILS 1
-#define NIXL_LIBFABRIC_CQ_SREAD_TIMEOUT_SEC 1
+// fi_cq_sread timeout is in milliseconds, not seconds
+#define NIXL_LIBFABRIC_CQ_SREAD_TIMEOUT_MS 1000
 #define NIXL_LIBFABRIC_DEFAULT_STRIPING_THRESHOLD (128 * 1024) // 128KB
 #define LF_EP_NAME_MAX_LEN 56
 

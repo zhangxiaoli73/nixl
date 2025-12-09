@@ -159,6 +159,10 @@ nixlLibfabricRailManager::prepareAndSubmitTransfer(nixlLibfabricReq::OpType op_t
         // Round-robin: use one rail for entire transfer
         size_t rail_idx = round_robin_counter.fetch_add(1) % selected_rails.size();
         size_t rail_id = selected_rails[rail_idx];
+
+        // Ensure rail is marked active for progress thread to process completions
+        markRailActive(rail_id);
+
         // Allocate request
         nixlLibfabricReq *req = data_rails_[rail_id]->allocateDataRequest(op_type);
         if (!req) {
@@ -232,6 +236,10 @@ nixlLibfabricRailManager::prepareAndSubmitTransfer(nixlLibfabricReq::OpType op_t
             size_t rail_id = selected_rails[i];
             size_t current_chunk_size = chunk_size + (i == num_rails - 1 ? remainder : 0);
             if (current_chunk_size == 0) break;
+
+            // Ensure rail is marked active for progress thread to process completions
+            markRailActive(rail_id);
+
             // Allocate request
             nixlLibfabricReq *req = data_rails_[rail_id]->allocateDataRequest(op_type);
             if (!req) {
