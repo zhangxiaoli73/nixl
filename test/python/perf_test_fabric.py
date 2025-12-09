@@ -18,6 +18,7 @@ ZMQ_HOST = "127.0.0.1"
 # ZMQ_BASE_PORT = 15555
 GET_META_MSG = b"get_meta_msg"
 SHUTDOWN_MSG = b"shutdown_msg"
+RECEIVER_META_MSG = b"receiver_meta"  # For symmetric connection pattern
 
 logging.basicConfig(
     level=logging.INFO,
@@ -217,6 +218,7 @@ def sender_process(args: argparse.Namespace):
             sock.bind(zmq_addr)
             logging.info(f"Sender listening for handshakes on {zmq_addr}")
 
+            # Step 1: Receiver requests sender's metadata
             identity, _, msg = sock.recv_multipart()
             if msg == GET_META_MSG:
                 sock.send_multipart((identity, b"", encoded_metadata))
@@ -224,9 +226,31 @@ def sender_process(args: argparse.Namespace):
             else:
                 raise RuntimeError(f"Expected metadata request, got: {msg}")
 
+            # Step 2: Receiver sends its metadata back (symmetric connection pattern)
+            identity, _, msg = sock.recv_multipart()
+            if msg.startswith(RECEIVER_META_MSG):
+                # Extract receiver metadata from message
+                receiver_metadata_bytes = msg[len(RECEIVER_META_MSG):]
+                receiver_meta = msgspec.msgpack.Decoder(NixlAgentMetadata).decode(receiver_metadata_bytes)
+                logging.info(f"Received metadata from receiver engine: {receiver_meta.engine_id}")
+
+                # Add remote agent and establish connection (symmetric with receiver)
+                logging.info("Adding receiver as remote agent...")
+                remote_agent_name = agent.add_remote_agent(receiver_meta.agent_metadata)
+                if isinstance(remote_agent_name, bytes):
+                    remote_agent_name = remote_agent_name.decode('utf-8')
+                agent.make_connection(remote_agent_name, [args.nixl_backend])
+                logging.info(f"Sender connected to receiver: {remote_agent_name}")
+
+                # Send ACK to receiver
+                sock.send_multipart((identity, b"", b"connected"))
+            else:
+                raise RuntimeError(f"Expected receiver metadata, got: {msg}")
+
+            # Step 3: Wait for shutdown signal
             identity, _, msg = sock.recv_multipart()
             if msg == SHUTDOWN_MSG:
-                sock.send_multipart((identity, b"ack"))
+                sock.send_multipart((identity, b"", b"ack"))
                 logging.info("Received shutdown signal. Sender will now exit.")
             else:
                 logging.warning(f"Expected shutdown signal, got: {msg}")
@@ -274,6 +298,7 @@ def receiver_process(args: argparse.Namespace):
         logging.info("Receiver shutting down.")
 
     try:
+        # Wait briefly to ensure sender has started
         time.sleep(5)
         logging.info("Creating receiver agent...")
         receiver_agent_id = str(uuid.uuid4())
@@ -286,44 +311,73 @@ def receiver_process(args: argparse.Namespace):
             return
         logging.info(f"Created receiver agent {receiver_agent_id}")
 
-        logging.info("Requesting metadata from sender...")
-        with zmq.Context() as ctx, ctx.socket(zmq.REQ) as sock:
-            zmq_addr = f"tcp://{ZMQ_HOST}:{args.zmq_port}"
-            sock.connect(zmq_addr)
-            logging.info(f"Requesting metadata from sender at {zmq_addr}...")
-            sock.send(GET_META_MSG)
-            metadata_bytes = sock.recv()
-
-        sender_meta: NixlAgentMetadata = msgspec.msgpack.Decoder(NixlAgentMetadata).decode(metadata_bytes)
-        logging.info(f"Received metadata from sender engine: {sender_meta.engine_id}")
-
-        logging.info("Adding remote agent...")
-        # device_id = 0
-        agent, remote_xfer_handle = add_remote_agent(agent, sender_meta, args, args.sender_device_id)
-        logging.info("Remote agent added successfully")
-
-        # Give sender time to be fully ready
-        time.sleep(1)
-
-        ####### Prepare the KV cache for the receiver #####
+        ####### Prepare the KV cache for the receiver FIRST (before connection) #####
         logging.info("Preparing local KV cache...")
-
-        # device_id = 4
         local_kv_cache = allocate_kv_cache(args, args.receiver_device_id)
         local_base_addr = local_kv_cache.data_ptr()
+        block_len = args.MB_size * 1024 * 1024
         logging.info("Registering local memory...")
         reg_descs = agent.get_reg_descs(
             [(local_base_addr, local_kv_cache.numel() * local_kv_cache.element_size(), args.receiver_device_id, "")],
             args.nixl_memory_type
         )
         agent.register_memory(reg_descs, backends=[args.nixl_backend])
+
+        # Prepare receiver's metadata for symmetric connection
+        receiver_metadata = NixlAgentMetadata(
+            engine_id=f"receiver-engine-{os.getpid()}",
+            agent_metadata=agent.get_agent_metadata(),
+            kv_caches_base_addr=[local_base_addr],
+            num_blocks=args.num_blocks,
+            block_len=block_len,
+        )
+        encoder = msgspec.msgpack.Encoder()
+        encoded_receiver_metadata = encoder.encode(receiver_metadata)
+        #################################################
+
+        logging.info("Requesting metadata from sender...")
+        with zmq.Context() as ctx, ctx.socket(zmq.REQ) as sock:
+            zmq_addr = f"tcp://{ZMQ_HOST}:{args.zmq_port}"
+            sock.connect(zmq_addr)
+
+            # Step 1: Request sender's metadata
+            logging.info(f"Requesting metadata from sender at {zmq_addr}...")
+            sock.send(GET_META_MSG)
+            metadata_bytes = sock.recv()
+            sender_meta = msgspec.msgpack.Decoder(NixlAgentMetadata).decode(metadata_bytes)
+            logging.info(f"Received metadata from sender engine: {sender_meta.engine_id}")
+
+            # Step 2: Add sender as remote agent
+            logging.info("Adding sender as remote agent...")
+            remote_agent_name = agent.add_remote_agent(sender_meta.agent_metadata)
+            if isinstance(remote_agent_name, bytes):
+                remote_agent_name = remote_agent_name.decode('utf-8')
+            agent.make_connection(remote_agent_name, [args.nixl_backend])
+            logging.info(f"Receiver connected to sender: {remote_agent_name}")
+
+            # Step 3: Send receiver's metadata to sender for symmetric connection
+            logging.info("Sending receiver metadata to sender for symmetric connection...")
+            sock.send(RECEIVER_META_MSG + encoded_receiver_metadata)
+            ack = sock.recv()
+            if ack == b"connected":
+                logging.info("Sender confirmed symmetric connection established")
+            else:
+                logging.warning(f"Unexpected response from sender: {ack}")
+
+        # Prepare remote transfer descriptors
+        remote_xfer_descs = create_xfer_descs(
+            agent, sender_meta.kv_caches_base_addr[0], sender_meta.num_blocks,
+            sender_meta.block_len, args.nixl_memory_type, args.sender_device_id
+        )
+        remote_xfer_handle = agent.prep_xfer_dlist(remote_agent_name, remote_xfer_descs)
+
+        # Prepare local transfer descriptors (KV cache already allocated above)
         logging.info("Creating local transfer descriptors...")
         local_xfer_descs = create_xfer_descs(
             agent, local_base_addr, sender_meta.num_blocks, sender_meta.block_len, args.nixl_memory_type, args.receiver_device_id
         )
         local_xfer_handle = agent.prep_xfer_dlist('NIXL_INIT_AGENT', local_xfer_descs)
         logging.info("Local setup complete")
-        #################################################
 
         latencies = []
         total_data_transferred = 0

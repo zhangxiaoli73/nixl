@@ -373,17 +373,20 @@ nixlLibfabricRailManager::selectRailsForMemory(void *mem_addr,
 
         std::vector<size_t> gpu_rails;
 
-        // If NIXL_DEVICES is set, skip topology lookup and use all available (filtered) rails
+        // If NIXL_DEVICES is set OR provider is not RDMA-based (e.g., shm, tcp),
+        // skip topology lookup and use all available rails directly
         const char *filter_env = getenv("NIXL_DEVICES");
-        if (filter_env) {
-            // NIXL_DEVICES filter is active - use all available rails directly
+        if (filter_env || !topology->isRdmaProvider()) {
+            // Use all available rails directly
             for (size_t i = 0; i < data_rails_.size(); ++i) {
                 gpu_rails.push_back(i);
             }
-            NIXL_DEBUG << "NIXL_DEVICES active: VRAM memory " << mem_addr << " on GPU " << gpu_id
-                       << " using all " << gpu_rails.size() << " filtered rails";
+            NIXL_DEBUG << "Using all " << gpu_rails.size() << " rails for VRAM memory " << mem_addr
+                       << " on GPU " << gpu_id
+                       << " (NIXL_DEVICES=" << (filter_env ? filter_env : "not set")
+                       << ", isRdmaProvider=" << topology->isRdmaProvider() << ")";
         } else {
-            // Normal path: use topology to find GPU-NIC affinity
+            // Normal path for RDMA providers: use topology to find GPU-NIC affinity
             std::vector<std::string> gpu_nics = topology->getNicsForGpu(gpu_id);
             if (gpu_nics.empty()) {
                 NIXL_ERROR << "No NICs found for GPU " << gpu_id;

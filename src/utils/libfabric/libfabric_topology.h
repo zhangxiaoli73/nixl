@@ -65,8 +65,6 @@ private:
     discoverDevices();
     nixl_status_t
     discoverTopology();
-    bool
-    isRdmaProvider() const;
 
     // hwloc-based discovery methods
     nixl_status_t
@@ -178,6 +176,8 @@ public:
         return topology_discovered;
     }
 
+    bool
+    isRdmaProvider() const;
     bool
     isValidGpuId(int gpu_id) const;
     bool

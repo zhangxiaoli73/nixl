@@ -712,15 +712,25 @@ nixlLibfabricEngine::establishConnection(const std::string &remote_agent) const 
 
     NIXL_INFO << "CONNECTION_REQ posted successfully, waiting for ACK...";
     // Register the connection state tracker with the CM thread
-    // Wait for the CM thread to establish the connection
-    // TODO: Currently blocking, update to timeout and return NIXL_IN_PROG
+    // Wait for the CM thread to establish the connection with timeout
     {
         std::unique_lock<std::mutex> lock(conn_info->conn_state_mutex_);
         NIXL_DEBUG << "Waiting for connection to be established for agent: " << remote_agent;
-        conn_info->cv_.wait(lock, [conn_info] {
+
+        // Use timeout to avoid indefinite blocking - 30 seconds should be sufficient
+        constexpr auto connection_timeout = std::chrono::seconds(30);
+        bool wait_result = conn_info->cv_.wait_for(lock, connection_timeout, [conn_info] {
             return conn_info->overall_state_ == ConnectionState::CONNECTED ||
                 conn_info->overall_state_ == ConnectionState::FAILED;
         });
+
+        if (!wait_result) {
+            NIXL_ERROR << "Connection timeout after 30 seconds waiting for ACK from agent: "
+                       << remote_agent;
+            conn_info->overall_state_ = ConnectionState::FAILED;
+            return NIXL_ERR_BACKEND;
+        }
+
         NIXL_DEBUG << "Connection state for agent " << remote_agent << " is now "
                    << conn_info->overall_state_;
 

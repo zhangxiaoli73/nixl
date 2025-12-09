@@ -22,6 +22,7 @@
 #include "libfabric_common.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cstring>
 #include <stdexcept>
 #include <stack>
@@ -589,7 +590,8 @@ nixlLibfabricRail::nixlLibfabricRail(const std::string &device,
                    << " data requests for rail " << rail_id;
 
         // Post initial receive using new resource management system
-        nixlLibfabricReq *recv_req = allocateControlRequest(NIXL_LIBFABRIC_SEND_RECV_BUFFER_SIZE);
+        nixlLibfabricReq *recv_req =
+            allocateControlRequest(NIXL_LIBFABRIC_SEND_RECV_BUFFER_SIZE);
         if (!recv_req) {
             NIXL_ERROR << "Failed to allocate request for initial receive on rail " << rail_id;
             throw std::runtime_error("Failed to allocate request for initial receive on rail " +
@@ -602,6 +604,7 @@ nixlLibfabricRail::nixlLibfabricRail(const std::string &device,
             throw std::runtime_error("Failed to post initial receive on rail " +
                                      std::to_string(rail_id));
         }
+        NIXL_INFO << "Posted initial receive on rail " << rail_id;
         NIXL_TRACE << "Successfully initialized rail " << rail_id;
     }
     catch (...) {
@@ -1094,9 +1097,11 @@ nixlLibfabricRail::postSend(uint64_t immediate_data,
                << " XFER_ID: " << NIXL_GET_XFER_ID_FROM_IMM(immediate_data)
                << " dest_addr: " << dest_addr << std::dec << " context: " << &req->ctx;
 
-    // Retry indefinitely until senddata succeeds or fails for all providers
+    // Retry with timeout until senddata succeeds or fails
     int ret = -FI_EAGAIN;
     int attempt = 0;
+    constexpr int max_retry_seconds = 30;
+    auto start_time = std::chrono::steady_clock::now();
 
     NIXL_INFO << "postSend starting: rail " << rail_id
               << " dest_addr: " << dest_addr
@@ -1125,7 +1130,17 @@ nixlLibfabricRail::postSend(uint64_t immediate_data,
         }
 
         if (ret == -FI_EAGAIN) {
-            // Resource temporarily unavailable - retry indefinitely for all providers
+            // Check timeout to prevent infinite loop
+            auto elapsed = std::chrono::steady_clock::now() - start_time;
+            if (elapsed > std::chrono::seconds(max_retry_seconds)) {
+                NIXL_ERROR << "postSend timeout after " << max_retry_seconds
+                           << " seconds retrying EAGAIN on rail " << rail_id
+                           << " dest_addr: " << dest_addr
+                           << " attempts: " << attempt;
+                return NIXL_ERR_BACKEND;
+            }
+
+            // Resource temporarily unavailable - retry with timeout
             attempt++;
 
             // Log every N attempts to avoid log spam
@@ -1180,9 +1195,11 @@ nixlLibfabricRail::postWrite(const void *local_buffer,
                << " remote_addr: " << (void *)remote_addr << " remote_key: " << remote_key
                << " context: " << &req->ctx;
 
-    // Retry indefinitely until writedata succeeds or fails for all providers
+    // Retry with timeout until writedata succeeds or fails
     int ret = -FI_EAGAIN;
     int attempt = 0;
+    constexpr int max_retry_seconds = 30;
+    auto start_time = std::chrono::steady_clock::now();
 
     while (true) {
         // Libfabric fi_writedata call
@@ -1205,7 +1222,17 @@ nixlLibfabricRail::postWrite(const void *local_buffer,
         }
 
         if (ret == -FI_EAGAIN) {
-            // Resource temporarily unavailable - retry indefinitely for all providers
+            // Check timeout to prevent infinite loop
+            auto elapsed = std::chrono::steady_clock::now() - start_time;
+            if (elapsed > std::chrono::seconds(max_retry_seconds)) {
+                NIXL_ERROR << "postWrite timeout after " << max_retry_seconds
+                           << " seconds retrying EAGAIN on rail " << rail_id
+                           << " dest_addr: " << dest_addr
+                           << " attempts: " << attempt;
+                return NIXL_ERR_BACKEND;
+            }
+
+            // Resource temporarily unavailable - retry with timeout
             attempt++;
 
             // Log every N attempts to avoid log spam
@@ -1258,9 +1285,11 @@ nixlLibfabricRail::postRead(void *local_buffer,
                << " dest_addr: " << dest_addr << " remote_addr: 0x" << std::hex << remote_addr
                << " remote_key: 0x" << remote_key << std::dec << " context: " << &req->ctx;
 
-    // Retry indefinitely until readdata succeeds or fails for all providers
+    // Retry with timeout until readdata succeeds or fails
     int ret = -FI_EAGAIN;
     int attempt = 0;
+    constexpr int max_retry_seconds = 30;
+    auto start_time = std::chrono::steady_clock::now();
 
     while (true) {
         // Libfabric fi_read call
@@ -1282,7 +1311,17 @@ nixlLibfabricRail::postRead(void *local_buffer,
         }
 
         if (ret == -FI_EAGAIN) {
-            // Resource temporarily unavailable - retry indefinitely for all providers
+            // Check timeout to prevent infinite loop
+            auto elapsed = std::chrono::steady_clock::now() - start_time;
+            if (elapsed > std::chrono::seconds(max_retry_seconds)) {
+                NIXL_ERROR << "postRead timeout after " << max_retry_seconds
+                           << " seconds retrying EAGAIN on rail " << rail_id
+                           << " dest_addr: " << dest_addr
+                           << " attempts: " << attempt;
+                return NIXL_ERR_BACKEND;
+            }
+
+            // Resource temporarily unavailable - retry with timeout
             attempt++;
 
             // Log every N attempts to avoid log spam (only log at intervals)
