@@ -1253,10 +1253,10 @@ nixlLibfabricRail::postRead(void *local_buffer,
         return NIXL_ERR_INVALID_PARAM;
     }
 
-    NIXL_INFO << "Posting RDMA read on rail " << rail_id << " endpoint: " << std::hex << endpoint
-              << " local_buffer: " << local_buffer << " length: " << std::dec << length
-              << " dest_addr: " << dest_addr << " remote_addr: 0x" << std::hex << remote_addr
-              << " remote_key: 0x" << remote_key << std::dec << " context: " << &req->ctx;
+    NIXL_TRACE << "Posting RDMA read on rail " << rail_id << " endpoint: " << std::hex << endpoint
+               << " local_buffer: " << local_buffer << " length: " << std::dec << length
+               << " dest_addr: " << dest_addr << " remote_addr: 0x" << std::hex << remote_addr
+               << " remote_key: 0x" << remote_key << std::dec << " context: " << &req->ctx;
 
     // Retry indefinitely until readdata succeeds or fails for all providers
     int ret = -FI_EAGAIN;

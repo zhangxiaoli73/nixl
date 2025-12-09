@@ -47,8 +47,43 @@ nixlLibfabricRailManager::nixlLibfabricRailManager(size_t striping_threshold)
     std::vector<std::string> all_devices = topology->getAllDevices();
     std::string selected_provider_name = topology->getProviderName();
 
-    NIXL_DEBUG << "Got " << all_devices.size()
-               << " network devices from topology for provider: " << selected_provider_name;
+    NIXL_INFO << "Got " << all_devices.size()
+              << " network devices from topology for provider: " << selected_provider_name;
+
+    // Check for environment variable to filter devices (e.g., NIXL_DEVICES="mlx5_0,mlx5_2")
+    const char *filter_env = getenv("NIXL_DEVICES");
+    if (filter_env) {
+        std::string filter_str(filter_env);
+        std::vector<std::string> filtered_devices;
+
+        // Parse comma-separated device list
+        size_t pos = 0;
+        while ((pos = filter_str.find(',')) != std::string::npos) {
+            std::string device = filter_str.substr(0, pos);
+            // Check if device exists in all_devices
+            if (std::find(all_devices.begin(), all_devices.end(), device) != all_devices.end()) {
+                filtered_devices.push_back(device);
+            }
+            filter_str.erase(0, pos + 1);
+        }
+        // Handle last device (or only device if no comma)
+        if (!filter_str.empty()) {
+            if (std::find(all_devices.begin(), all_devices.end(), filter_str) != all_devices.end()) {
+                filtered_devices.push_back(filter_str);
+            }
+        }
+
+        if (!filtered_devices.empty()) {
+            NIXL_INFO << "NIXL_DEVICES filter: using " << filtered_devices.size()
+                      << " devices instead of " << all_devices.size();
+            for (const auto& dev : filtered_devices) {
+                NIXL_INFO << "  - " << dev;
+            }
+            all_devices = filtered_devices;
+        } else {
+            NIXL_WARN << "NIXL_DEVICES filter matched no devices, using all " << all_devices.size();
+        }
+    }
 
     // Create data rails with selected provider - throw on failure
     nixl_status_t rail_status = createDataRails(all_devices, selected_provider_name);
@@ -155,10 +190,16 @@ nixlLibfabricRailManager::prepareAndSubmitTransfer(nixlLibfabricReq::OpType op_t
     // Determine striping strategy
     bool use_striping = shouldUseStriping(transfer_size) && selected_rails.size() > 1;
 
+    NIXL_DEBUG << "prepareAndSubmitTransfer: use_striping=" << use_striping
+               << " selected_rails.size()=" << selected_rails.size()
+               << " transfer_size=" << transfer_size;
+
     if (!use_striping) {
         // Round-robin: use one rail for entire transfer
         size_t rail_idx = round_robin_counter.fetch_add(1) % selected_rails.size();
         size_t rail_id = selected_rails[rail_idx];
+
+        NIXL_DEBUG << "Non-striping path: rail_idx=" << rail_idx << " rail_id=" << rail_id;
 
         // Ensure rail is marked active for progress thread to process completions
         markRailActive(rail_id);
@@ -229,11 +270,13 @@ nixlLibfabricRailManager::prepareAndSubmitTransfer(nixlLibfabricReq::OpType op_t
 
     } else {
         // Striping: distribute across multiple rails
+        NIXL_DEBUG << "Striping path: using " << selected_rails.size() << " rails";
         size_t num_rails = selected_rails.size();
         size_t chunk_size = transfer_size / num_rails;
         size_t remainder = transfer_size % num_rails;
         for (size_t i = 0; i < num_rails; ++i) {
             size_t rail_id = selected_rails[i];
+            NIXL_TRACE << "Striping: using rail_id=" << rail_id << " for chunk " << i;
             size_t current_chunk_size = chunk_size + (i == num_rails - 1 ? remainder : 0);
             if (current_chunk_size == 0) break;
 
@@ -327,35 +370,47 @@ nixlLibfabricRailManager::selectRailsForMemory(void *mem_addr,
             NIXL_ERROR << "Invalid GPU ID " << gpu_id << " for VRAM memory " << mem_addr;
             return {}; // Return empty vector to indicate failure
         }
-        std::vector<std::string> gpu_nics = topology->getNicsForGpu(gpu_id);
-        if (gpu_nics.empty()) {
-            NIXL_ERROR << "No NICs found for GPU " << gpu_id;
-            return {}; // Return empty vector to indicate failure
-        }
-        std::vector<size_t> gpu_rails;
-        for (const std::string &device_name : gpu_nics) {
-            auto it = device_to_rail_map.find(device_name);
-            if (it != device_to_rail_map.end()) {
-                // Bounds check: ensure rail index is valid
-                if (it->second < data_rails_.size()) {
-                    gpu_rails.push_back(it->second);
-                    NIXL_INFO << "VRAM memory " << mem_addr << " on GPU " << gpu_id
-                               << " mapped to rail " << it->second << " (fabric device: " << device_name
-                               << ")";
-                } else {
-                    NIXL_WARN << "Fabric device " << device_name << " maps to rail " << it->second
-                              << " but only " << data_rails_.size() << " rails available";
-                }
-            } else {
-                NIXL_WARN << "Fabric device " << device_name << " not found in rail mapping for GPU "
-                          << gpu_id;
-            }
-        }
 
-        if (gpu_rails.empty()) {
-            NIXL_ERROR << "No valid rail mapping found for GPU " << gpu_id << " (checked "
-                       << gpu_nics.size() << " NICs)";
-            return {};
+        std::vector<size_t> gpu_rails;
+
+        // If NIXL_DEVICES is set, skip topology lookup and use all available (filtered) rails
+        const char *filter_env = getenv("NIXL_DEVICES");
+        if (filter_env) {
+            // NIXL_DEVICES filter is active - use all available rails directly
+            for (size_t i = 0; i < data_rails_.size(); ++i) {
+                gpu_rails.push_back(i);
+            }
+            NIXL_DEBUG << "NIXL_DEVICES active: VRAM memory " << mem_addr << " on GPU " << gpu_id
+                       << " using all " << gpu_rails.size() << " filtered rails";
+        } else {
+            // Normal path: use topology to find GPU-NIC affinity
+            std::vector<std::string> gpu_nics = topology->getNicsForGpu(gpu_id);
+            if (gpu_nics.empty()) {
+                NIXL_ERROR << "No NICs found for GPU " << gpu_id;
+                return {}; // Return empty vector to indicate failure
+            }
+
+            for (const std::string &device_name : gpu_nics) {
+                auto it = device_to_rail_map.find(device_name);
+                if (it != device_to_rail_map.end()) {
+                    // Bounds check: ensure rail index is valid
+                    if (it->second < data_rails_.size()) {
+                        gpu_rails.push_back(it->second);
+                        NIXL_DEBUG << "VRAM memory " << mem_addr << " on GPU " << gpu_id
+                                   << " mapped to rail " << it->second
+                                   << " (fabric device: " << device_name << ")";
+                    }
+                }
+            }
+
+            if (gpu_rails.empty()) {
+                // Fallback: if no topology-matched rails found, use all available rails
+                NIXL_WARN << "No topology-matched rails for GPU " << gpu_id << ", falling back to all "
+                          << data_rails_.size() << " available rails";
+                for (size_t i = 0; i < data_rails_.size(); ++i) {
+                    gpu_rails.push_back(i);
+                }
+            }
         }
 
         NIXL_DEBUG << "VRAM memory " << mem_addr << " on GPU " << gpu_id << " will use "
