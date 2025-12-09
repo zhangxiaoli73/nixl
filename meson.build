@@ -199,7 +199,7 @@ else
   ucx_dep = dependency('ucx', modules: ['ucx::ucs', 'ucx::ucp', 'ucx::uct'], required: false)
 endif
 
-libfabric_path = get_option('libfabric_path')
+libfabric_path = '/opt/intel/libfabric20'
 if libfabric_path != ''
   libfabric_lib_path = libfabric_path + '/lib'
   libfabric_inc_path = libfabric_path + '/include'

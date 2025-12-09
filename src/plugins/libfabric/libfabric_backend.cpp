@@ -693,6 +693,10 @@ nixlLibfabricEngine::establishConnection(const std::string &remote_agent) const 
     memcpy(control_request->buffer, serialized_conn_info.data(), serialized_conn_info.length());
     control_request->buffer_size = serialized_conn_info.length();
 
+    NIXL_INFO << "Posting CONNECTION_REQ to control_rail_remote_addr: "
+              << conn_info->control_rail_remote_addr_list_[0]
+              << " agent_index: " << it->second->agent_index_;
+
     nixl_status_t status = rail_manager.postControlMessage(
         nixlLibfabricRailManager::ControlMessageType::CONNECTION_REQ,
         control_request,
@@ -705,6 +709,8 @@ nixlLibfabricEngine::establishConnection(const std::string &remote_agent) const 
         // TODO, wrap req info into a nixlLibfabricRequestHandle and add retry logic
         return NIXL_ERR_BACKEND;
     }
+
+    NIXL_INFO << "CONNECTION_REQ posted successfully, waiting for ACK...";
     // Register the connection state tracker with the CM thread
     // Wait for the CM thread to establish the connection
     // TODO: Currently blocking, update to timeout and return NIXL_IN_PROG
@@ -1349,15 +1355,22 @@ nixlLibfabricEngine::getNotifs(notif_list_t &notif_list) {
 // Background progress function that continuously processes completions on all rails
 nixl_status_t
 nixlLibfabricEngine::cmThread() {
-    NIXL_DEBUG << "ConnectionManagement thread started successfully";
-    NIXL_DEBUG << "Initial receives already posted in main thread, entering progress loop";
+    NIXL_INFO << "ConnectionManagement thread started for " << localAgent
+              << ", blocking_cq_sread_supported: "
+              << rail_manager.getControlRail(0).blocking_cq_sread_supported;
+    NIXL_INFO << "Initial receives already posted in main thread, entering progress loop";
 
+    int loop_count = 0;
     // Main progress loop - continuously process completions on all rails
     while (!cm_thread_stop_.load()) {
+        loop_count++;
+        if (loop_count % 1000000 == 0) {
+            NIXL_INFO << "CM thread for " << localAgent << " loop iteration " << loop_count;
+        }
 
         nixl_status_t status = rail_manager.progressAllControlRails();
         if (status == NIXL_SUCCESS) {
-            NIXL_DEBUG << "Processed completions on control rails";
+            NIXL_INFO << "CM thread for " << localAgent << " processed completions on control rails";
         } else if (status != NIXL_IN_PROG && status != NIXL_SUCCESS) {
             NIXL_ERROR << "Failed to process completions on control rails";
             return NIXL_ERR_BACKEND;
@@ -1514,9 +1527,18 @@ void
 nixlLibfabricEngine::processConnectionAck(uint16_t agent_idx,
                                           nixlLibfabricConnection *conn_info,
                                           ConnectionState state) {
+    NIXL_INFO << "processConnectionAck called with agent_idx: " << agent_idx
+              << " agent_names_ size: " << agent_names_.size();
+
+    if (agent_idx >= agent_names_.size()) {
+        NIXL_ERROR << "Invalid agent_idx " << agent_idx << " >= agent_names_.size() "
+                   << agent_names_.size();
+        return;
+    }
+
     std::string remote_agent_name = agent_names_[agent_idx];
-    NIXL_DEBUG << "Connection state callback for agent " << remote_agent_name
-               << " agent_idx: " << agent_idx;
+    NIXL_INFO << "Connection state callback for agent " << remote_agent_name
+              << " agent_idx: " << agent_idx;
     std::lock_guard<std::mutex> lock(connections_[remote_agent_name]->conn_state_mutex_);
     connections_[remote_agent_name]->overall_state_ = ConnectionState::CONNECTED;
     connections_[remote_agent_name]->cv_.notify_all();
@@ -1527,8 +1549,8 @@ nixl_status_t
 nixlLibfabricEngine::processConnectionRequest(uint16_t agent_idx,
                                               const std::string &serialized_data,
                                               nixlLibfabricRail *rail) {
-    NIXL_DEBUG << "Processing connection request from agent " << agent_idx << " on rail "
-               << rail->rail_id;
+    NIXL_INFO << "Processing connection request from agent " << agent_idx << " on rail "
+              << rail->rail_id << " serialized_data length: " << serialized_data.length();
 
     // Use rail manager to deserialize ALL endpoints at once with "src" prefix (connection request
     // contains source endpoints)
@@ -1596,7 +1618,7 @@ nixlLibfabricEngine::processConnectionRequest(uint16_t agent_idx,
         return ack_status;
     }
 
-    NIXL_DEBUG << "ACK sent successfully via rail manager";
+    NIXL_INFO << "ACK sent successfully via rail manager to fi_addr " << initiator_control_fi_addr;
     return NIXL_SUCCESS;
 }
 

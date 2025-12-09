@@ -161,7 +161,8 @@ nixlLibfabricTopology::getNicsForGpu(int gpu_id) const {
     if (it != gpu_to_nics.end()) {
         return it->second;
     }
-    NIXL_WARN << "No NICs found for GPU " << gpu_id << ", returning all devices";
+    // Use DEBUG level since this is expected for providers like shm that don't use NICs
+    NIXL_DEBUG << "No NICs found for GPU " << gpu_id << ", returning all devices";
     return all_devices;
 }
 

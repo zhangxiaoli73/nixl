@@ -25,6 +25,7 @@
 #include <mutex>
 #include <ostream>
 #include <stack>
+#include <atomic>
 
 #include "nixl.h"
 #include "backend/backend_aux.h"
@@ -437,6 +438,10 @@ public:
     // Memory registration helper
     uint64_t
     getMemoryRegistrationAccessFlags() const;
+
+    // Counter for generating unique MR keys for providers that use application-selected keys
+    // (e.g., shm provider). Providers using FI_MR_PROV_KEY (e.g., verbs) ignore this.
+    mutable std::atomic<uint64_t> next_mr_key_{1};
 };
 
 

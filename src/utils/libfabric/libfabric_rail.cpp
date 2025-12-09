@@ -435,6 +435,10 @@ nixlLibfabricRail::nixlLibfabricRail(const std::string &device,
     if (provider == "tcp" || provider == "sockets") {
         hints->domain_attr->mr_mode = FI_MR_LOCAL | FI_MR_ALLOCATED;
         hints->domain_attr->mr_key_size = 0; // Let provider decide
+    } else if (provider == "shm") {
+        // shm uses application-selected keys (not FI_MR_PROV_KEY)
+        hints->domain_attr->mr_mode = FI_MR_LOCAL | FI_MR_HMEM | FI_MR_VIRT_ADDR | FI_MR_ALLOCATED;
+        hints->domain_attr->mr_key_size = 0; // Let provider decide
     } else {
         // Add HMEM support for other providers (EFA, verbs)
         if (hints->domain_attr->mr_mode != 0) {
@@ -537,18 +541,19 @@ nixlLibfabricRail::nixlLibfabricRail(const std::string &device,
 
         // Disable shared memory transfers for EFA provider to fix same-agent transfers
         if (provider_name.find("efa") == 0) {
-           bool optval = false;
-           ret = fi_setopt(&endpoint->fid,
-                           FI_OPT_ENDPOINT,
-                           FI_OPT_SHARED_MEMORY_PERMITTED,
-                           &optval,
-                           sizeof(optval));
-           if (ret && ret != -FI_ENOSYS) {
-               NIXL_WARN << "fi_setopt FI_OPT_SHARED_MEMORY_PERMITTED failed for rail " << rail_id
-                         << ": " << fi_strerror(-ret) << " - continuing anyway";
-           } else if (ret == 0) {
-               NIXL_DEBUG << "Successfully disabled shared memory transfers for rail " << rail_id;
-           }
+            NIXL_WARN << "go to some disabled path for rail " << rail_id;
+        //    bool optval = false;
+        //    ret = fi_setopt(&endpoint->fid,
+        //                    FI_OPT_ENDPOINT,
+        //                    FI_OPT_SHARED_MEMORY_PERMITTED,
+        //                    &optval,
+        //                    sizeof(optval));
+        //    if (ret && ret != -FI_ENOSYS) {
+        //        NIXL_WARN << "fi_setopt FI_OPT_SHARED_MEMORY_PERMITTED failed for rail " << rail_id
+        //                  << ": " << fi_strerror(-ret) << " - continuing anyway";
+        //    } else if (ret == 0) {
+        //        NIXL_DEBUG << "Successfully disabled shared memory transfers for rail " << rail_id;
+        //    }
         }
 
         // Enable endpoint for this rail
@@ -751,9 +756,10 @@ nixlLibfabricRail::progressCompletionQueue(bool use_blocking) const {
     }
 
     if (ret == 1) {
-        NIXL_TRACE << "Completion received on rail " << rail_id << " flags: " << std::hex
-                   << completion.flags << " data: " << completion.data
-                   << " context: " << completion.op_context << std::dec;
+        NIXL_INFO << "Completion received on rail " << rail_id << " flags: 0x" << std::hex
+                  << completion.flags << " data: 0x" << completion.data
+                  << " context: " << completion.op_context << std::dec
+                  << " len: " << completion.len;
 
         // Process completion using local data. Callbacks have their own thread safety
         nixl_status_t status = processCompletionQueueEntry(&completion);
@@ -762,7 +768,7 @@ nixlLibfabricRail::progressCompletionQueue(bool use_blocking) const {
             return status;
         }
 
-        NIXL_DEBUG << "Completion processed on rail " << rail_id;
+        NIXL_INFO << "Completion processed successfully on rail " << rail_id;
         return NIXL_SUCCESS;
     }
 
@@ -924,12 +930,13 @@ nixlLibfabricRail::processRecvCompletion(struct fi_cq_data_entry *comp) const {
             return NIXL_ERR_BACKEND;
         }
     } else if (msg_type == NIXL_LIBFABRIC_MSG_ACK) {
-        NIXL_TRACE << "Processing connect request acknowledgement on rail " << rail_id;
+        NIXL_INFO << "Processing connect request acknowledgement on rail " << rail_id
+                  << " agent_idx: " << agent_idx;
         // Notify engine that connection is established via callback
         // TODO: validate the current state before calling callback
         if (connectionAckCallback) {
             connectionAckCallback(agent_idx, nullptr, ConnectionState::CONNECTED);
-            NIXL_TRACE << "Connection state updated to CONNECTED via callback for rail " << rail_id;
+            NIXL_INFO << "Connection state updated to CONNECTED via callback for rail " << rail_id;
         } else {
             NIXL_ERROR << "No connection state callback set for rail " << rail_id;
             return NIXL_ERR_BACKEND;
@@ -1077,9 +1084,10 @@ nixlLibfabricRail::postSend(uint64_t immediate_data,
 
         if (ret == 0) {
             // Success
-            NIXL_TRACE << "Send posted successfully"
-                       << (attempt > 0 ? " after " + std::to_string(attempt + 1) + " attempts" :
-                                         "");
+            NIXL_INFO << "Send posted successfully on rail " << rail_id
+                      << " immediate_data: 0x" << std::hex << immediate_data
+                      << " dest_addr: " << dest_addr << std::dec
+                      << (attempt > 0 ? " after " + std::to_string(attempt + 1) + " attempts" : "");
             return NIXL_SUCCESS;
         }
 
@@ -1355,6 +1363,10 @@ nixlLibfabricRail::registerMemory(void *buffer,
         mr_attr.iov_count = 1;
         mr_attr.access = provider_access_flags;
 
+        // Generate unique key for providers that use application-selected keys (e.g., shm).
+        // Providers using FI_MR_PROV_KEY (e.g., verbs) will ignore this field.
+        mr_attr.requested_key = next_mr_key_.fetch_add(1);
+
         // Map hint to FI_HMEM interface and set device ID
         if (hint_lower == "cuda") {
             mr_attr.iface = FI_HMEM_CUDA;
@@ -1418,12 +1430,17 @@ nixlLibfabricRail::registerMemory(void *buffer,
         NIXL_DEBUG << "Using GDR registration method on rail " << rail_id
                    << " (standard fi_mr_reg, relies on nvidia-peermem kernel module)";
 
-        // For TCP providers, use a unique key to avoid conflicts
-        uint64_t requested_key = 0;
+        // Generate unique key for providers that use application-selected keys
+        // (e.g., shm, tcp, sockets). Providers using FI_MR_PROV_KEY (e.g., verbs)
+        // will ignore this field.
+        uint64_t requested_key = next_mr_key_.fetch_add(1);
         if (provider_name == "tcp" || provider_name == "sockets") {
-            // Generate a unique key based on buffer address to avoid collisions
+            // For TCP providers, use a unique key based on buffer address to avoid collisions
             requested_key = reinterpret_cast<uintptr_t>(buffer) & 0xFFFFFFFF;
             NIXL_DEBUG << "TCP provider: using requested key " << requested_key << " for buffer "
+                       << buffer << " on rail " << rail_id;
+        } else {
+            NIXL_DEBUG << "Using requested key " << requested_key << " for buffer "
                        << buffer << " on rail " << rail_id;
         }
 
@@ -1617,6 +1634,8 @@ nixlLibfabricRail::insertAddress(const void *addr, fi_addr_t *fi_addr_out) const
         return NIXL_ERR_BACKEND;
     }
 
+    NIXL_INFO << "fi_av_insert succeeded on rail " << rail_id
+              << " fi_addr_out: " << *fi_addr_out;
     return NIXL_SUCCESS;
 }
 

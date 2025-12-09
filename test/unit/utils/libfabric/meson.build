@@ -32,4 +32,13 @@ if get_option('buildtype') != 'release'
                cpp_args: libfabric_test_cpp_args,
                install: true)
 
+    # Test for shm provider multiple memory registration with unique keys
+    libfabric_shm_mr_test_bin = executable('libfabric_shm_mr_test',
+               'libfabric_shm_mr_test.cpp',
+               dependencies: libfabric_utils_dep,
+               include_directories: [nixl_inc_dirs, utils_inc_dirs],
+               link_with: libfabric_utils_lib,
+               cpp_args: libfabric_test_cpp_args,
+               install: true)
+
 endif

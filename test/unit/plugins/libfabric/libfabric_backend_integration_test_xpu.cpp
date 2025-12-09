@@ -17,6 +17,7 @@ FI_PROVIDER=verbs ./test/unit/plugins/libfabric/test_libfabric_backend_integrati
 #include <cstring>
 #include <memory>
 #include <unistd.h>
+#include <thread>
 
 #include "libfabric_backend.h"
 #include "common/nixl_log.h"
@@ -312,12 +313,25 @@ test_multi_descriptor_offsets(bool p_thread) {
     std::cout << "Connection 1 of enigne 1 is " << conn1 << " connection 2 of engine 2 is " << conn2 << std::endl;
 
     std::cout << "Establishing connections...\n";
-    engine1->connect(agent2);
-    engine2->connect(agent1);
 
-    // Wait for async connection establishment to complete
-    // The CM thread handles connection progress
-    sleep(2);
+    // Both connect() calls are blocking and each waits for the other side's ACK.
+    // The CM threads handle the actual connection handshake in the background.
+    // We run them in parallel threads to avoid blocking since both need to wait
+    // for ACKs that are sent by the other side's CM thread.
+    std::thread connect_thread1([&]() {
+        std::cout << "Thread 1: connecting engine1 to agent2...\n";
+        nixl_status_t status = engine1->connect(agent2);
+        std::cout << "Thread 1: engine1->connect(agent2) returned " << status << "\n";
+    });
+    std::thread connect_thread2([&]() {
+        std::cout << "Thread 2: connecting engine2 to agent1...\n";
+        nixl_status_t status = engine2->connect(agent1);
+        std::cout << "Thread 2: engine2->connect(agent1) returned " << status << "\n";
+    });
+
+    connect_thread1.join();
+    connect_thread2.join();
+
     std::cout << "Connections established\n\n";
 
     // Load remote metadata
