@@ -362,6 +362,7 @@ public:
 
     virtual nixl_status_t
     status() {
+        printf("[zl_debug] in nixlUcxBackendH to get status \n");
         if (requests_.empty()) {
             /* No pending transmissions */
             connections_.clear();
@@ -728,6 +729,7 @@ nixlUcxChunkBackendH::complete(nixl_status_t status) {
 nixl_status_t
 nixlUcxChunkBackendH::status() {
     // First check if entire request was cancelled or failed
+    printf("[zl_debug] in nixlUcxChunkBackendH to get status \n");
     nixl_status_t status = sharedState_->status.load();
     if (status == NIXL_SUCCESS) {
         status = nixlUcxBackendH::status();
@@ -799,6 +801,7 @@ public:
 
     nixl_status_t
     status() override {
+        printf("[zl_debug] in nixlUcxCompositeBackendH to get status \n");
         while (getWorker()->progress())
             ;
 
