@@ -157,7 +157,7 @@ endif
 prefix_path = get_option('prefix')
 prefix_inc = prefix_path + '/include'
 
-ucx_path = get_option('ucx_path')
+ucx_path = '/tmp/ucx_install'
 if ucx_path != ''
   ucx_lib_path = ucx_path + '/lib'
   ucx_inc_path = ucx_path + '/include'

@@ -385,6 +385,7 @@ public:
 
     virtual nixl_status_t
     status() {
+        printf("[zl_debug] in nixlUcxBackendH to get status \n");
         if (requests_.empty()) {
             /* No pending transmissions */
             return NIXL_SUCCESS;
@@ -403,9 +404,11 @@ public:
                 switch (ret) {
                 case NIXL_SUCCESS:
                     /* Mark as completed */
+                    printf("[zl_debug] in nixlUcxBackendH and get status as completed\n");
                     req->completed();
                     break;
                 case NIXL_IN_PROG:
+                    printf("[zl_debug] in nixlUcxBackendH and get status as in-process\n");
                     out_ret = NIXL_IN_PROG;
                     break;
                 default:
@@ -749,6 +752,7 @@ nixlUcxChunkBackendH::complete(nixl_status_t status) {
 nixl_status_t
 nixlUcxChunkBackendH::status() {
     // First check if entire request was cancelled or failed
+    printf("[zl_debug] in nixlUcxChunkBackendH to get status \n");
     nixl_status_t status = sharedState_->status.load();
     if (status == NIXL_SUCCESS) {
         status = nixlUcxBackendH::status();
@@ -820,6 +824,7 @@ public:
 
     nixl_status_t
     status() override {
+        printf("[zl_debug] in nixlUcxCompositeBackendH to get status \n");
         while (getWorker()->progress())
             ;
 
@@ -1479,6 +1484,7 @@ nixlUcxEngine::sendXferRange(const nixl_xfer_op_t &operation,
     nixl_status_t ret;
     nixlUcxReq req;
     size_t workerId = intHandle->getWorkerId();
+    auto start1 = std::chrono::steady_clock::now();
 
     // Reserve space for the requests, +2 for flush and completion
     intHandle->reserve(end_idx - start_idx + 2);
@@ -1524,6 +1530,8 @@ nixlUcxEngine::sendXferRange(const nixl_xfer_op_t &operation,
         return ret;
     }
 
+    auto duration = std::chrono::duration_cast<chrono_period_us_t>(std::chrono::steady_clock::now() - start1);
+    printf("[zl_debug] [NIXL] sendXferRange time is %lld (ms) \n", static_cast<long long>(duration.count()));
     return NIXL_SUCCESS;
 }
 
