@@ -136,7 +136,7 @@ else
     warning('SynapseAI not found. Habana Gaudi device support will be disabled.')
 endif
 
-sycl_root = '/opt/intel/oneapi/compiler/2025.1'
+sycl_root = '/opt/intel/oneapi/compiler/2025.2'
 sycl_inc = include_directories(join_paths(sycl_root, 'include'))
 
 sycl_libdir = join_paths(sycl_root, 'lib')
