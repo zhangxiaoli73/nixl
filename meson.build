@@ -136,20 +136,7 @@ else
     warning('SynapseAI not found. Habana Gaudi device support will be disabled.')
 endif
 
-# Auto-detect latest oneAPI compiler version
-oneapi_base = '/opt/intel/oneapi/compiler'
-if fs.exists(oneapi_base)
-  versions = run_command('bash', '-c', 'ls -1d ' + oneapi_base + '/* | grep -E "[0-9]+\\.[0-9]+" | sort -V | tail -n1').stdout().strip()
-  if versions != ''
-    sycl_root = versions
-  else
-    sycl_root = oneapi_base
-  endif
-else
-  sycl_root = '/opt/intel/oneapi/compiler/2025.2'
-endif
-sycl_inc = include_directories(join_paths(sycl_root, 'include'))
-
+sycl_root = '/opt/intel/oneapi/compiler/latest'
 sycl_libdir = join_paths(sycl_root, 'lib')
 
 sycl_dep = declare_dependency(
